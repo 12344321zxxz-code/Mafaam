@@ -364,7 +364,8 @@ function renderImport(m) {
       : `<input type="text" id="newName" placeholder="שם המבחן, למשל: חורף 2016" style="min-width:240px"><button class="btn primary" id="createTest">צור מבחן</button>`}
     </div>
     <details class="help" style="margin-top:10px"><summary>איך מסמנים? (חשוב לקרוא פעם אחת)</summary><ol>
-      <li>בחרו <b>פרק</b> לפי המבחן המקורי (פרק 1, 2…). פרקי אנגלית — מדלגים.</li>
+      <li><b>PDF רשמי של המרכז הארצי (עם טקסט):</b> האפליקציה מזהה לבד את מפתח התשובות בסוף הקובץ, את הפרק לפי כותרת העמוד ואת מספר השאלה בתוך המסגרת — ומכניסה את התשובה הנכונה אוטומטית (מסומן ב-🔑). נשאר רק לגרור מסגרות.</li>
+      <li>בקובץ סרוק: בחרו <b>פרק</b> לפי המבחן המקורי (פרק 1, 2…). פרקי אנגלית — מדלגים.</li>
       <li>בחרו <b>סוג שאלה</b> וגררו מסגרת סביב השאלה <b>כולל ארבע התשובות</b>. סמנו לפי הסדר במבחן — הסדר קובע את רמת הקושי (בכל פרק השאלות מתקשות לקראת הסוף).</li>
       <li><b>קטע קריאה / תרשים:</b> בחרו "קטע קריאה" או "תרשים / טבלה" וסמנו רק את הקטע או התרשים. הסוג יתחלף לבד ל"שאלה על קטע" / "שאלה על תרשים" — סמנו את השאלות שלו והן יוצמדו אליו.</li>
       <li>שאלה או קטע שנמשכים על שני טורים או עמודים: סמנו את החלק הראשון, לחצו <b>"הוסף חלק לפריט האחרון"</b>, וסמנו את ההמשך.</li>
@@ -417,7 +418,7 @@ function renderImport(m) {
   $('#cropBtn', tb).onclick = () => { IMP.cropOn = !IMP.cropOn; syncToolbar(); renderPages(); };
   $('#zIn', tb).onclick = () => setZoom(IMP.zoom + 0.25);
   $('#zOut', tb).onclick = () => setZoom(IMP.zoom - 0.25);
-  syncToolbar(); renderPages(); renderAside(); fitAside();
+  syncChapterSelect(); syncToolbar(); renderPages(); renderAside(); fitAside();
 }
 function fitAside() { const tb = $('.toolbar'), hd = $('header'); if (tb && hd) document.documentElement.style.setProperty('--aside-top', (hd.offsetHeight + tb.offsetHeight + 12) + 'px'); }
 window.addEventListener('resize', fitAside);
@@ -497,32 +498,152 @@ async function doCrop(pi, r, pageDiv) {
   await addCrop(data, pi, r, pageDiv);
 }
 function nextOrder(tid) { let m = 0; for (const i of store.items.values()) if (i.testId === tid && i.order > m) m = i.order; return m + 1; }
+
+/* ---------- PDF text layer: chapter from page header, question number from the crop, answers from the key page ---------- */
+const normTxt = s => String(s).replace(/[‎‏‪-‮⁦-⁩]/g, '').replace(/\s+/g, ' ').trim();
+const SECTION_RE = /(חשיבה מילולית|חשיבה כמותית|אנגלית)\s*[-–]\s*פרק\s*(ראשון|שני|שלישי|רביעי|חמישי|שישי)/;
+const sectionLabel = s => { const m = normTxt(s).match(SECTION_RE); return m ? `${m[1]} - פרק ${m[2]}` : null; };
+const RANGE_TYPES = [[/אנלוגיות/, 'analogy'], [/השלמת משפטים/, 'sentence'], [/הבנה והסקה/, 'comprehension'], [/קטע קריאה/, 'passageQ'], [/שאלות ובעיות/, 'problem'], [/הסקה מ(?:תרשים|טבלה|גרף)|תרשים|טבלה/, 'chartQ']];
+async function pageTextItems(page) {
+  try {
+    const vp = page.getViewport({ scale: 1 }); const tc = await page.getTextContent();
+    return tc.items.filter(it => it.str && it.str.trim()).map(it => {
+      const [x, yb] = vp.convertToViewportPoint(it.transform[4], it.transform[5]);
+      const hgt = Math.hypot(it.transform[2], it.transform[3]) || it.height || 10;
+      return { s: normTxt(it.str), x: x / vp.width, w: it.width / vp.width, y: yb / vp.height, h: hgt / vp.height }; // fractions of the page; y = baseline from top
+    });
+  } catch { return []; }
+}
+function groupLines(items, tol = 0.006) {
+  const lines = [];
+  [...items].sort((a, b) => a.y - b.y).forEach(it => { const l = lines.find(L => Math.abs(L.y - it.y) <= tol); if (l) l.items.push(it); else lines.push({ y: it.y, items: [it] }); });
+  lines.forEach(l => l.items.sort((a, b) => (b.x + b.w) - (a.x + a.w))); // right to left
+  return lines;
+}
+const lineText = L => L.items.map(i => i.s).join(' ');
+function pageHeader(items) {
+  const top = items.filter(i => i.y < 0.09);
+  for (const it of top) { const l = sectionLabel(it.s); if (l) return l; }
+  for (const L of groupLines(top)) { const l = sectionLabel(lineText(L)); if (l) return l; }
+  return null;
+}
+function pageRanges(items) {
+  const out = [];
+  for (const L of groupLines(items)) {
+    const t = lineText(L); const m = t.match(/\(?\s*שאלות\s*:?\s*(\d{1,2})\s*[-–]\s*(\d{1,2})/); if (!m) continue;
+    const rt = RANGE_TYPES.find(([re]) => re.test(t)); if (!rt) continue;
+    out.push({ a: Math.min(+m[1], +m[2]), b: Math.max(+m[1], +m[2]), type: rt[1] });
+  }
+  return out;
+}
+function parseAnswerKey(items) {
+  if (!/מפתח\s*ה?תשובות/.test(items.map(i => i.s).join(' '))) return [];
+  const heads = [];
+  items.forEach(it => { const l = sectionLabel(it.s); if (l) heads.push({ label: l, y: it.y }); });
+  if (!heads.length) groupLines(items).forEach(L => { const l = sectionLabel(lineText(L)); if (l) heads.push({ label: l, y: L.y }); });
+  heads.sort((a, b) => a.y - b.y);
+  return heads.map((hd, k) => {
+    const yEnd = k + 1 < heads.length ? heads[k + 1].y : 1.01;
+    const toks = [];
+    items.filter(i => i.y > hd.y + 0.002 && i.y < yEnd).forEach(i => {
+      const parts = i.s.split(' '); if (!parts.every(p => /^\d{1,2}$/.test(p))) return;
+      parts.forEach((p, j) => toks.push({ v: +p, cx: i.x + i.w * (j + 0.5) / parts.length, y: i.y, x: i.x, w: 0, s: p }));
+    });
+    const lines = groupLines(toks).sort((a, b) => a.y - b.y);
+    const answers = {};
+    for (let li = 0; li < lines.length - 1; li++) {
+      const vs = lines[li].items.map(t => t.v); if (vs.length < 3) continue;
+      const asc = [...vs].sort((a, b) => a - b); if (!asc.every((v, j) => j === 0 || v === asc[j - 1] + 1)) continue; // a row of question numbers
+      const ansLine = lines[li + 1]; if (!ansLine.items.every(t => t.v >= 1 && t.v <= 4)) continue;
+      lines[li].items.forEach(q => {
+        let best = null; ansLine.items.forEach(a => { const d = Math.abs(a.cx - q.cx); if (d < 0.025 && (!best || d < best.d)) best = { d, v: a.v }; });
+        if (best) answers[q.v] = best.v;
+      });
+      li++;
+    }
+    return { label: hd.label, answers };
+  }).filter(s => Object.keys(s.answers).length);
+}
+function detectQnum(items, r) {
+  const inside = items.filter(i => { const cx = i.x + i.w / 2, cy = i.y - i.h / 3; return cx >= r.x && cx <= r.x + r.w && cy >= r.y && cy <= r.y + r.h; });
+  // the question number is "N." with nothing printed right next to it on its right (RTL line start);
+  // stray marks far away in the margin are ignored
+  for (const L of groupLines(inside).sort((a, b) => a.y - b.y)) {
+    const its = L.items;
+    for (const n of its) {
+      const m = n.s.match(/^\.?(\d{1,2})\.?$/); if (!m || +m[1] < 1 || +m[1] > 40) continue;
+      const hasDot = n.s.includes('.') || its.some(i => i.s === '.' && Math.abs((i.x + i.w) - n.x) < 0.012);
+      if (!hasDot) continue;
+      const right = n.x + n.w;
+      const near = its.some(i => i !== n && i.s !== '.' && i.x + i.w > right - 0.002 && i.x - right < 0.025);
+      if (!near) return +m[1];
+    }
+  }
+  return null;
+}
+function analyzeText(tid) {
+  const t = store.tests.get(tid); if (!t) return null;
+  const auto = { chapters: { ...((t.auto && t.auto.chapters) || {}) }, key: {}, ranges: {} };
+  let next = Math.max(0, ...Object.values(auto.chapters)) + 1;
+  const chNum = label => { if (/אנגלית/.test(label)) return null; if (!auto.chapters[label]) auto.chapters[label] = next++; return auto.chapters[label]; };
+  let hasText = false;
+  IMP.pages.forEach(p => {
+    if (!p.items || !p.items.length) return; hasText = true;
+    const hd = pageHeader(p.items); p.chapter = hd ? chNum(hd) : null;
+    if (p.chapter) (auto.ranges[p.chapter] = auto.ranges[p.chapter] || []).push(...pageRanges(p.items));
+    parseAnswerKey(p.items).forEach(sec => { const n = chNum(sec.label); if (n) auto.key[n] = { ...(auto.key[n] || {}), ...sec.answers }; });
+  });
+  if (!hasText) return { hasText: false };
+  t.auto = auto; dbPut('tests', t);
+  // re-uploading the PDF for a test that already has marked questions: fill their answers too
+  const upd = testItems(tid).filter(i => applyKey(i, t)); if (upd.length) dbPutMany('items', upd);
+  return { hasText, keyChapters: Object.keys(auto.key).length, chapters: Object.keys(auto.chapters).length };
+}
+function applyKey(item, t = store.tests.get(item.testId)) {
+  const key = t && t.auto && t.auto.key[item.chapter]; if (!key || item.manual || !item.qnum) return false;
+  const a = key[item.qnum]; if (!a || item.answer === a) return false;
+  item.answer = a; item.fromKey = true; return true;
+}
+const chapterName = (tid, ch) => { const t = store.tests.get(tid); const c = t && t.auto && t.auto.chapters; if (!c) return ''; const e = Object.entries(c).find(([, n]) => n === ch); return e ? e[0] : ''; };
+function rangeType(tid, ch, qn) { const t = store.tests.get(tid); const rs = t && t.auto && t.auto.ranges[ch]; const r = rs && rs.find(x => qn >= x.a && qn <= x.b); return r ? r.type : null; }
+
 async function addCrop(data, pi, r, pageDiv) {
   let item, label;
   if (IMP.appendNext && store.items.has(IMP.lastItemId)) {
     item = store.items.get(IMP.lastItemId); item.imgs.push(data); IMP.appendNext = false;
     label = '+'; await dbPut('items', item); syncToolbar();
   } else {
-    const T = TYPES[IMP.type];
-    item = { id: uid(), testId: IMP.testId, chapter: IMP.chapter, type: IMP.type, imgs: [data], answer: 0, order: nextOrder(IMP.testId), created: Date.now() };
+    const pg = IMP.pages[pi] || {};
+    let type = IMP.type; let T = TYPES[type];
+    item = { id: uid(), testId: IMP.testId, chapter: (T.kind !== 'essay' && pg.chapter) || IMP.chapter, type, imgs: [data], answer: 0, order: nextOrder(IMP.testId), created: Date.now() };
+    if ((T.kind === 'q' || T.kind === 'child') && pg.items && pg.items.length) {
+      const qn = detectQnum(pg.items, r);
+      if (qn) {
+        item.qnum = qn;
+        const rt = rangeType(IMP.testId, item.chapter, qn);   // e.g. questions 1-6 = analogies
+        if (rt && rt !== type) { type = rt; T = TYPES[type]; item.type = type; IMP.type = type; syncToolbar(); }
+      }
+    }
     if (T.kind === 'child') {
       const g = store.items.get(IMP.lastGroupId);
       if (!g || g.type !== T.parent || g.testId !== IMP.testId) { toast(`קודם סמנו את ה${TYPES[T.parent].label} עצמו`, 'bad'); return; }
       item.groupId = g.id; item.chapter = g.chapter;
     }
+    applyKey(item);
     await dbPut('items', item);
     if (T.kind === 'group') { IMP.lastGroupId = item.id; IMP.type = T.child; syncToolbar(); toast(`${T.label} נשמר — עכשיו סמנו את השאלות שלו`, 'ok'); }
+    else if (item.qnum) toast(`שאלה ${item.qnum} · ${T.label}${item.answer ? ` · תשובה ${item.answer} 🔑` : ''}`, 'ok');
     label = labelFor(item);
   }
   IMP.lastItemId = item.id;
   const c = { page: pi, r, itemId: item.id, label };
   IMP.crops.push(c); pageDiv.append(cropRectEl(c));
-  if (item.chapter !== IMP.chapter) IMP.chapter = item.chapter;
+  if (item.chapter !== IMP.chapter) { IMP.chapter = item.chapter; const s = $('#chapSel'); if (s) s.value = IMP.chapter; }
   renderAside(true);
 }
 function chapterNumbering(tid, ch) {
   const list = chapterItems(tid, ch); const num = {}; let n = 0, g = 0;
-  list.forEach(i => { const k = TYPES[i.type].kind; if (k === 'q' || k === 'child') num[i.id] = String(++n); else if (k === 'group') num[i.id] = (i.type === 'passage' ? 'קטע ' : 'תרשים ') + (++g); else num[i.id] = 'חיבור'; });
+  list.forEach(i => { const k = TYPES[i.type].kind; if (k === 'q' || k === 'child') { n++; num[i.id] = String(i.qnum || n); } else if (k === 'group') num[i.id] = (i.type === 'passage' ? 'קטע ' : 'תרשים ') + (++g); else num[i.id] = 'חיבור'; });
   return { list, num };
 }
 function labelFor(item) { return chapterNumbering(item.testId, item.chapter).num[item.id] || ''; }
@@ -533,7 +654,9 @@ function renderAside(scrollToLast) {
   const missing = qs.filter(i => !(i.answer >= 1)).length;
   const counts = CHAPTERS.map(c => ({ c, n: chapterItems(IMP.testId, c).length })).filter(x => x.n);
   el.innerHTML = '';
-  el.append(h(`<div><h3>פרק ${IMP.chapter} · ${qs.length} שאלות ${missing ? `<span class="pill bad">${missing} בלי תשובה</span>` : qs.length ? '<span class="pill ok">מלא</span>' : ''}</h3>
+  const t = store.tests.get(IMP.testId); const hasKey = !!(t && t.auto && t.auto.key[IMP.chapter]); const cname = chapterName(IMP.testId, IMP.chapter);
+  el.append(h(`<div><h3>פרק ${IMP.chapter}${cname ? ` <span class="muted small">(${esc(cname)})</span>` : ''} · ${qs.length} שאלות ${missing ? `<span class="pill bad">${missing} בלי תשובה</span>` : qs.length ? '<span class="pill ok">מלא</span>' : ''}</h3>
+    ${hasKey ? `<div class="small" style="color:var(--ok);margin-bottom:6px">🔑 מפתח התשובות של הפרק זוהה מה-PDF — התשובה הנכונה תתמלא לבד בכל שאלה שתסמנו</div>` : ''}
     ${counts.length ? `<div class="small muted" style="margin-bottom:8px">פרקים במבחן: ${counts.map(x => `<a href="#" data-c="${x.c}">פרק ${x.c}</a> (${x.n})`).join(' · ')}</div>` : ''}
     <div class="row" style="margin-bottom:12px"><input type="text" id="keyIn" placeholder="מפתח תשובות לפרק, למשל 3142213…" style="flex:1;min-width:0;direction:ltr;text-align:left"><button class="btn sm" id="keyBtn">החל</button></div>
   </div>`));
@@ -542,7 +665,7 @@ function renderAside(scrollToLast) {
     const raw = $('#keyIn', el).value;
     if (/[05-9]/.test(raw)) { toast('רק הספרות 1–4, לפי הסדר, בלי מספרי שאלות', 'bad'); return; }
     const d = (raw.match(/[1-4]/g) || []).map(Number); if (!d.length) return;
-    qs.forEach((q, i) => { if (i < d.length) q.answer = d[i]; });
+    qs.forEach((q, i) => { if (i < d.length) { q.answer = d[i]; q.manual = true; q.fromKey = false; } });
     dbPutMany('items', qs.slice(0, d.length));
     toast(d.length === qs.length ? `הוזנו ${d.length} תשובות ✓` : `הוזנו ${Math.min(d.length, qs.length)} תשובות — שימו לב: במפתח ${d.length}, בפרק ${qs.length} שאלות`, d.length === qs.length ? 'ok' : 'bad');
     renderAside();
@@ -555,7 +678,7 @@ function renderAside(scrollToLast) {
       <div><img class="thumb" src="${i.imgs[0]}" alt="">
         <div class="meta">
           ${T.kind === 'q' ? `<select class="tsel">${Q_TYPES.map(t => `<option value="${t}" ${t === i.type ? 'selected' : ''}>${TYPES[t].label}</option>`).join('')}</select>` : `<span class="tlabel">${T.label}${i.imgs.length > 1 ? ` · ${i.imgs.length} חלקים` : ''}</span>`}
-          ${isQ ? `<span class="ab">${[1, 2, 3, 4].map(n => `<button data-n="${n}" class="${i.answer === n ? 'on' : ''}">${n}</button>`).join('')}</span>` : ''}
+          ${isQ ? `<span class="ab">${[1, 2, 3, 4].map(n => `<button data-n="${n}" class="${i.answer === n ? 'on' : ''}">${n}</button>`).join('')}</span>${i.fromKey ? '<span class="small" title="מתוך מפתח התשובות">🔑</span>' : ''}` : ''}
         </div></div>
       <button class="x" title="מחק">✕</button>
     </div>`);
@@ -577,14 +700,14 @@ function renderAside(scrollToLast) {
 function setAnswer(id, n) {
   const i = store.items.get(id); if (!i) return;
   const k = TYPES[i.type].kind; if (k !== 'q' && k !== 'child') return;
-  i.answer = n; dbPut('items', i); renderAside();
+  i.answer = n; i.manual = true; i.fromKey = false; dbPut('items', i); renderAside();
 }
 async function loadFiles(files) {
   if (!files.length) return;
   IMP.pages.forEach(p => URL.revokeObjectURL(p.url)); IMP.pages = []; IMP.crops = [];
   renderPages();
   const status = s => { IMP.status = s; const el = $('#renderStatus'); if (el) el.textContent = s; };
-  const addPage = url => { IMP.pages.push({ url }); const wrap = $('#pages'); if (!wrap) return; if (IMP.pages.length === 1) wrap.innerHTML = ''; wrap.append(pageEl(IMP.pages.at(-1), IMP.pages.length - 1)); };
+  const addPage = (url, items) => { IMP.pages.push({ url, items: items || null }); const wrap = $('#pages'); if (!wrap) return; if (IMP.pages.length === 1) wrap.innerHTML = ''; wrap.append(pageEl(IMP.pages.at(-1), IMP.pages.length - 1)); };
   for (const f of files) {
     if (f.type === 'application/pdf' || /\.pdf$/i.test(f.name)) {
       if (!window.pdfjsLib) { toast('רכיב קריאת ה-PDF לא נטען — בדקו חיבור לאינטרנט ורעננו', 'bad'); continue; }
@@ -598,14 +721,26 @@ async function loadFiles(files) {
           const ctx = c.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
           await page.render({ canvasContext: ctx, viewport: vp }).promise;
           const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.9));
+          const items = await pageTextItems(page);
           c.width = c.height = 0; page.cleanup();
-          addPage(URL.createObjectURL(blob));
+          addPage(URL.createObjectURL(blob), items);
         }
         pdf.destroy();
       } catch (e) { console.error(e); toast('לא הצלחתי לפתוח את הקובץ: ' + f.name, 'bad'); }
     } else if (f.type.startsWith('image/')) addPage(URL.createObjectURL(f));
   }
-  status(IMP.pages.length ? `${IMP.pages.length} עמודים מוכנים לסימון` : '');
+  let msg = IMP.pages.length ? `${IMP.pages.length} עמודים מוכנים לסימון` : '';
+  const an = IMP.pages.length ? analyzeText(IMP.testId) : null;
+  if (an && an.hasText) {
+    msg += an.keyChapters ? ` · 🔑 זוהה מפתח תשובות ל-${an.keyChapters} פרקים — הפרק, מספר השאלה והתשובה יתמלאו לבד` : ' · לא נמצא מפתח תשובות בקובץ — הזינו תשובות ידנית';
+    if (an.keyChapters) toast(`זוהה מפתח תשובות ל-${an.keyChapters} פרקים 🔑`, 'ok');
+    renderAside(); syncChapterSelect();
+  } else if (an) msg += ' · הקובץ סרוק (בלי טקסט) — הזינו תשובות ידנית';
+  status(msg);
+}
+function syncChapterSelect() {
+  const s = $('#chapSel'); if (!s) return;
+  s.innerHTML = CHAPTERS.map(c => { const n = chapterName(IMP.testId, c); return `<option value="${c}" ${c === IMP.chapter ? 'selected' : ''}>${c}${n ? ' · ' + esc(n.replace('חשיבה ', '')) : ''}</option>`; }).join('');
 }
 
 /* ================= BANK ================= */
