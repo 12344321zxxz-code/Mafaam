@@ -322,8 +322,8 @@ function renderHome(m) {
     <div>
       <h3>איך זה עובד</h3>
       <ol class="steps">
-        <li><b>ייבוא מבחן</b> — מעלים PDF של מבחן פסיכומטרי ישן.</li>
-        <li><b>סימון</b> — גוררים מסגרת סביב כל שאלה, בוחרים את סוג השאלה ואת התשובה הנכונה (או מדביקים מפתח תשובות).</li>
+        <li><b>ייבוא מבחן</b> — מעלים PDF של מבחן פסיכומטרי ישן. השאלות, הקטעים, סוגי השאלות והתשובות הנכונות מזוהים אוטומטית.</li>
+        <li><b>סקירה</b> — עוברים על השאלות ומתקנים בלחיצה אם צריך (בקובץ סרוק: מסמנים ידנית בגרירת מסגרות).</li>
         <li><b>סימולציה</b> — האפליקציה בונה מבחן מפע"ם מהמאגר: חיבור, חשיבה מילולית, הפסקה, חשיבה כמותית.</li>
         <li><b>תוצאות</b> — ציון לכל חלק ולכל סוג שאלה, וסקירה של כל הטעויות.</li>
       </ol>
@@ -365,7 +365,11 @@ function renderImport(m) {
       <span class="lbl">מבחן:</span>
       <select id="impTest"><option value="">+ מבחן חדש</option>${tests.map(t => `<option value="${t.id}" ${t.id === IMP.testId ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select>
       ${IMP.testId ? `<label class="btn primary">📄 העלה PDF או תמונות<input type="file" id="fileIn" accept="application/pdf,image/*" multiple hidden></label><span class="muted small" id="renderStatus">${esc(IMP.status)}</span>`
-      : `<input type="text" id="newName" placeholder="שם המבחן, למשל: חורף 2016" style="min-width:240px"><button class="btn primary" id="createTest">צור מבחן</button>`}
+      : `<label class="btn primary big">📄 העלו PDF של מבחן<input type="file" id="fileNew" accept="application/pdf,image/*" multiple hidden></label>
+         <span class="muted small">כל השאלות, הקטעים, התרשימים, סוגי השאלות והתשובות הנכונות יזוהו אוטומטית (PDF רשמי של המרכז הארצי לבחינות)</span>`}
+    </div>
+    ${IMP.testId ? '' : `<details class="help" style="margin-top:10px"><summary>או: מבחן ריק לסימון ידני (לקבצים סרוקים)</summary><div class="row" style="margin-top:8px"><input type="text" id="newName" placeholder="שם המבחן, למשל: חורף 2016" style="min-width:240px"><button class="btn" id="createTest">צור מבחן</button></div></details>`}
+    <div>
     </div>
     <details class="help" style="margin-top:10px"><summary>איך מסמנים? (חשוב לקרוא פעם אחת)</summary><ol>
       <li><b>PDF רשמי של המרכז הארצי (עם טקסט):</b> האפליקציה מזהה לבד את מפתח התשובות בסוף הקובץ, את הפרק לפי כותרת העמוד ואת מספר השאלה בתוך המסגרת — ומכניסה את התשובה הנכונה אוטומטית (מסומן ב-🔑). נשאר רק לגרור מסגרות.</li>
@@ -381,12 +385,19 @@ function renderImport(m) {
   if (!IMP.testId) {
     const create = () => {
       const name = $('#newName').value.trim(); if (!name) { toast('כתבו שם למבחן'); return; }
-      const t = { id: uid(), name, created: Date.now() }; dbPut('tests', t);
+      const t = { id: uid(), name, created: Date.now(), manualMode: true }; dbPut('tests', t);
       IMP.testId = t.id; IMP.chapter = 1; IMP.type = 'analogy'; IMP.lastItemId = IMP.lastGroupId = null;
       IMP.pages.forEach(p => URL.revokeObjectURL(p.url)); IMP.pages = []; IMP.crops = []; IMP.status = '';
       render();
     };
     $('#createTest', head).onclick = create;
+    $('#fileNew', head).onchange = e => {
+      const files = [...e.target.files]; if (!files.length) return;
+      const t = { id: uid(), name: files[0].name.replace(/\.[^.]+$/, ''), created: Date.now(), autoNamed: true }; dbPut('tests', t);
+      IMP.testId = t.id; IMP.chapter = 1; IMP.type = 'analogy'; IMP.lastItemId = IMP.lastGroupId = null;
+      IMP.pages.forEach(p => URL.revokeObjectURL(p.url)); IMP.pages = []; IMP.crops = []; IMP.status = '';
+      render(); loadFiles(files, true);
+    };
     $('#newName', head).onkeydown = e => { if (e.key === 'Enter') create(); };
     return;
   }
@@ -489,7 +500,8 @@ function cropRectEl(c) {
   return el;
 }
 function loadImage(url) { return new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = url; }); }
-async function doCrop(pi, r, pageDiv) {
+async function doCrop(pi, r, pageDiv) { await addCrop(await cropData(pi, r), pi, r, pageDiv); }
+async function cropData(pi, r) {
   const img = await loadImage(IMP.pages[pi].url);
   const W = img.naturalWidth, H = img.naturalHeight;
   const sx = r.x * W, sy = r.y * H, sw = r.w * W, sh = r.h * H;
@@ -498,9 +510,97 @@ async function doCrop(pi, r, pageDiv) {
   const ctx = c.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
   ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(img, sx, sy, sw, sh, 0, 0, c.width, c.height);
-  const t = trimCanvas(c);
-  const data = t.toDataURL('image/jpeg', 0.9);
-  await addCrop(data, pi, r, pageDiv);
+  return trimCanvas(c).toDataURL('image/jpeg', 0.9);
+}
+
+/* ---------- automatic extraction: find every question / passage / chart / essay topic on the pages ---------- */
+// Works on official NITE PDFs (they carry a text layer). Questions are found by their "N." marks; each one is cut
+// at the widest empty band after its answer (4), using the rendered page so figures and fractions stay whole.
+async function planPages(progress) {
+  const CUT = /הוראות לשאלות|\(?\s*שאלות\s*:?\s*\d{1,2}\s*[-–]\s*\d{1,2}|^השאלות$/;
+  const GROUP = /(קטע קריאה|הסקה מ\S+)\s*\(?\s*שאלות/;
+  const X0 = 0.072, X1 = 0.932;   // page margins carry decorative check marks at 3-7% and 94-97.5%
+  const out = [];
+  for (let i = 0; i < IMP.pages.length; i++) {
+    const p = IMP.pages[i]; if (progress) progress(i + 1, IMP.pages.length);
+    if (!p.items || !p.items.length) continue;
+    const isEssay = p.items.some(x => x.y < 0.09 && /מטלת כתיבה/.test(x.s));
+    if (!p.chapter && !isEssay) continue;
+    const body = p.items.filter(x => x.y > 0.09 && x.y < 0.93 && x.x < 0.93 && x.x + x.w > 0.07);
+    if (!body.length || body.every(x => /עמוד ריק/.test(x.s))) continue;
+    // ink profile per pixel row (dark pixels only, inside the text column)
+    const img = await loadImage(p.url); const W = img.naturalWidth, H = img.naturalHeight;
+    const c = document.createElement('canvas'); c.width = W; c.height = H; const g = c.getContext('2d'); g.drawImage(img, 0, 0);
+    const xa = Math.round(W * 0.1), xb = Math.round(W * 0.9); const px = g.getImageData(xa, 0, xb - xa, H).data; const rw = xb - xa;
+    const ink = new Int32Array(H);
+    for (let y = 0; y < H; y++) { let n = 0; for (let x = 0; x < rw; x++) { const o = (y * rw + x) * 4; if (px[o] + px[o + 1] + px[o + 2] < 480) n++; } ink[y] = n; }
+    const blank = f => ink[clamp(Math.round(f * H), 0, H - 1)] === 0;
+    const blankAbove = f => { for (let y = f; y > f - 0.07; y -= 1 / H) if (blank(y)) return y; return f - 0.01; };
+    const blankBelow = (f, lim = 0.93) => { for (let y = f; y < lim; y += 1 / H) if (blank(y)) return y; return f + 0.008; };
+    const lines = groupLines(body).sort((a, b) => a.y - b.y);
+    const lh = L => Math.min(0.02, Math.max(...L.items.map(x => x.h)));
+    const isMark = L => { const f = L.items.find(x => x.s !== '.'); return f && /^\d{1,2}$/.test(f.s) && f.x > 0.8 && L.items.some(x => x.s === '.' && Math.abs(x.x + x.w - f.x) < 0.012) ? +f.s : 0; };
+    const is4 = L => L.items.some(it => /^\(4\)$/.test(it.s)) || L.items.some(it => it.s === '4' && L.items.some(o => o.s === '(' && o.x >= it.x + it.w - 0.003 && o.x - (it.x + it.w) < 0.012));
+    const marks = []; lines.forEach((L, k) => { const n = isMark(L); if (n) marks.push({ n, k, L }); });
+    const markTop = m => m.L.y - lh(m.L) - 0.001;
+    // widest run of empty pixel rows between y0 and y1
+    const widestGap = (y0, y1) => { let best = null, st = null; for (let y = y0; y <= y1; y += 1 / H) { if (blank(y)) { if (st === null) st = y; } else if (st !== null) { if (!best || y - st > best.b - best.a) best = { a: st, b: y }; st = null; } } if (st !== null && (!best || y1 - st > best.b - best.a)) best = { a: st, b: y1 }; return best; };
+    const tops = marks.map(m => blankAbove(markTop(m))), bots = [];
+    marks.forEach((m, j) => {
+      const endK = j + 1 < marks.length ? marks[j + 1].k : lines.length;
+      let lastK = m.k, opt4 = -1, cutK = -1;
+      for (let k = m.k + 1; k < endK; k++) { if (CUT.test(lineText(lines[k]))) { cutK = k; break; } lastK = k; if (is4(lines[k])) opt4 = k; }
+      if (j + 1 < marks.length && cutK < 0) {
+        // boundary with the next question: the widest empty band after this question's answer (4)
+        const from = lines[opt4 >= 0 ? opt4 : m.k].y + 0.002, to = markTop(marks[j + 1]);
+        const g = widestGap(from, to);
+        if (g) { bots[j] = g.a + Math.min(0.004, (g.b - g.a) / 2); tops[j + 1] = Math.max(Math.min(tops[j + 1], g.b - Math.min(0.004, (g.b - g.a) / 2)), bots[j]); return; }
+      }
+      // last question on the page, or a section heading follows: stop at the first empty row after the last line
+      if (opt4 >= 0) { lastK = opt4; for (let k = opt4 + 1; k < (cutK >= 0 ? cutK : endK); k++) { if (lines[k].y - lines[k - 1].y > 0.024) break; lastK = k; } }
+      bots[j] = blankBelow(lines[lastK].y + 0.002) + 0.003;
+    });
+    const qs = marks.map((m, j) => ({ n: m.n, r: { x: X0, y: tops[j] - 0.002, w: X1 - X0, h: bots[j] - tops[j] + 0.004 } }));
+    let groupR = null, essayR = null;
+    if (lines.filter(L => L.y < 0.2).some(L => GROUP.test(lineText(L))) || isEssay) {
+      const endK = marks.length ? marks[0].k : lines.length;
+      let lastK = 0; for (let k = 0; k < endK; k++) if (!CUT.test(lineText(lines[k])) || k === 0) lastK = k;
+      const bot = blankBelow(lines[lastK].y + 0.002);
+      const r = { x: X0, y: 0.1, w: X1 - X0, h: bot - 0.1 + 0.006 };
+      if (isEssay) essayR = r; else groupR = r;
+    }
+    out.push({ page: i, chapter: p.chapter, qs, groupR, essayR });
+  }
+  return out;
+}
+async function autoExtract(tid, progress) {
+  const plan = await planPages(progress);
+  const existing = testItems(tid);
+  const haveQ = new Set(existing.filter(i => i.qnum).map(i => i.chapter + ':' + i.qnum));
+  const havePage = new Set(existing.filter(i => i.page != null).map(i => i.type + ':' + i.page));
+  const isQuant = ch => /כמותית/.test(chapterName(tid, ch));
+  const lastGroup = {}; existing.filter(i => TYPES[i.type].kind === 'group').forEach(g => lastGroup[g.chapter] = g);
+  let order = nextOrder(tid); const made = [];
+  const mk = (o) => ({ id: uid(), testId: tid, answer: 0, order: order++, created: Date.now(), auto: true, ...o });
+  for (const pl of plan) {
+    if (pl.essayR && !existing.some(i => i.type === 'essay') && !made.some(i => i.type === 'essay'))
+      made.push(mk({ chapter: 0, type: 'essay', page: pl.page, imgs: [await cropData(pl.page, pl.essayR)] }));
+    if (pl.groupR) {
+      const type = isQuant(pl.chapter) ? 'chart' : 'passage';
+      if (!havePage.has(type + ':' + pl.page)) { const g = mk({ chapter: pl.chapter, type, page: pl.page, imgs: [await cropData(pl.page, pl.groupR)] }); made.push(g); lastGroup[pl.chapter] = g; }
+    }
+    for (const q of pl.qs) {
+      if (haveQ.has(pl.chapter + ':' + q.n)) continue;
+      const fallback = isQuant(pl.chapter) ? 'problem' : 'comprehension';
+      const it = mk({ chapter: pl.chapter, qnum: q.n, page: pl.page, type: rangeType(tid, pl.chapter, q.n) || fallback, imgs: [await cropData(pl.page, q.r)] });
+      const T = TYPES[it.type];
+      if (T.kind === 'child') { const g = lastGroup[pl.chapter]; if (g && g.type === T.parent) it.groupId = g.id; else it.type = fallback; }
+      applyKey(it); haveQ.add(pl.chapter + ':' + q.n); made.push(it);
+    }
+  }
+  await dbPutMany('items', made);
+  const qn = made.filter(i => ['q', 'child'].includes(TYPES[i.type].kind));
+  return { questions: qn.length, noAnswer: qn.filter(i => !(i.answer >= 1)).length, groups: made.filter(i => TYPES[i.type].kind === 'group').length, essay: made.some(i => i.type === 'essay') };
 }
 // cut away empty white margins around a crop (keeps 14px padding) so short questions show large on phones
 function trimCanvas(c) {
@@ -620,6 +720,9 @@ function analyzeText(tid) {
     parseAnswerKey(p.items).forEach(sec => { const n = chNum(sec.label); if (n) auto.key[n] = { ...(auto.key[n] || {}), ...sec.answers }; });
   });
   if (!hasText) return { hasText: false };
+  if (t.autoNamed) {
+    for (const p of IMP.pages.slice(0, 8)) { const m = groupLines((p.items || []).filter(i => i.y < 0.09)).map(lineText).join(' | ').match(/מועד\s+([א-ת]+)\s+(\d{4})/); if (m) { t.name = `פסיכומטרי ${m[1]} ${m[2]}`; t.autoNamed = false; break; } }
+  }
   t.auto = auto; dbPut('tests', t);
   // re-uploading the PDF for a test that already has marked questions: fill their answers too
   const upd = testItems(tid).filter(i => applyKey(i, t)); if (upd.length) dbPutMany('items', upd);
@@ -728,7 +831,7 @@ function setAnswer(id, n) {
   const k = TYPES[i.type].kind; if (k !== 'q' && k !== 'child') return;
   i.answer = n; i.manual = true; i.fromKey = false; dbPut('items', i); renderAside();
 }
-async function loadFiles(files) {
+async function loadFiles(files, auto = false) {
   if (!files.length) return;
   IMP.pages.forEach(p => URL.revokeObjectURL(p.url)); IMP.pages = []; IMP.crops = [];
   renderPages();
@@ -759,10 +862,29 @@ async function loadFiles(files) {
   const an = IMP.pages.length ? analyzeText(IMP.testId) : null;
   if (an && an.hasText) {
     msg += an.keyChapters ? ` · 🔑 זוהה מפתח תשובות ל-${an.keyChapters} פרקים — הפרק, מספר השאלה והתשובה יתמלאו לבד` : ' · לא נמצא מפתח תשובות בקובץ — הזינו תשובות ידנית';
-    if (an.keyChapters) toast(`זוהה מפתח תשובות ל-${an.keyChapters} פרקים 🔑`, 'ok');
-    renderAside(); syncChapterSelect();
-  } else if (an) msg += ' · הקובץ סרוק (בלי טקסט) — הזינו תשובות ידנית';
+    renderAside(); syncChapterSelect(); showAutoBtn();
+    const tt = store.tests.get(IMP.testId);
+    if (auto || (!testItems(IMP.testId).length && !(tt && tt.manualMode))) {
+      const tid = IMP.testId;
+      const res = await autoExtract(tid, (k, n) => status(`מזהה שאלות… עמוד ${k} מתוך ${n}`));
+      if (res.questions) {
+        toast(`זוהו ${res.questions} שאלות${res.groups ? `, ${res.groups} קטעים/תרשימים` : ''}${res.essay ? ' ונושא חיבור' : ''} ✓`, 'ok');
+        REVIEW_ID = tid; RV.chapter = 'all'; RV.onlyMissing = false; IMP.status = msg; go('review'); return;
+      }
+      msg += ' · לא זוהו שאלות אוטומטית — סמנו ידנית בגרירת מסגרות';
+    }
+  } else if (an) msg += ' · הקובץ סרוק (בלי טקסט) — סמנו ידנית בגרירת מסגרות';
   status(msg);
+}
+function showAutoBtn() {
+  const st = $('#renderStatus'); if (!st || $('#autoBtn')) return;
+  const b = h(`<button class="btn sm" id="autoBtn">✨ זהה את כל השאלות אוטומטית</button>`); st.after(b);
+  b.onclick = async () => {
+    b.disabled = true; const tid = IMP.testId;
+    const res = await autoExtract(tid, (k, n) => { b.textContent = `מזהה… ${k}/${n}`; });
+    toast(res.questions ? `נוספו ${res.questions} שאלות` : 'לא נמצאו שאלות חדשות', res.questions ? 'ok' : '');
+    if (res.questions) { REVIEW_ID = tid; go('review'); } else { b.disabled = false; b.textContent = '✨ זהה את כל השאלות אוטומטית'; }
+  };
 }
 function syncChapterSelect() {
   const s = $('#chapSel'); if (!s) return;
