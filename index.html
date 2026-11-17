@@ -1,0 +1,901 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>סימולטור מפע"ם</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f4f5f8;--card:#fff;--ink:#1c2230;--muted:#6a7284;--line:#e2e5ec;--accent:#2b59d1;--accent2:#e9eefc;--ok:#1d9a54;--okbg:#e6f6ec;--bad:#d24343;--badbg:#fdeceC;--warn:#b77c00;}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{font-family:Heebo,system-ui,-apple-system,"Segoe UI",Arial,sans-serif;background:var(--bg);color:var(--ink);font-size:15px;line-height:1.5}
+button,input,select,textarea{font:inherit;color:inherit}
+header{display:flex;align-items:center;gap:18px;padding:10px 20px;background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:30;flex-wrap:wrap}
+header h1{font-size:19px;margin:0;font-weight:800;letter-spacing:-.2px}
+header h1 small{font-weight:400;color:var(--muted);font-size:13px;margin-inline-start:6px}
+nav{display:flex;gap:4px;flex-wrap:wrap}
+nav button{border:0;background:none;padding:7px 12px;border-radius:8px;cursor:pointer;color:var(--muted);font-weight:500}
+nav button:hover{background:var(--bg)}
+nav button.on{background:var(--accent2);color:var(--accent)}
+main{max-width:1280px;margin:0 auto;padding:20px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:16px}
+.card h2{margin:0 0 10px;font-size:18px}
+.card h3{margin:0 0 8px;font-size:15px}
+.muted{color:var(--muted)}
+.small{font-size:13px}
+.row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.row+.row{margin-top:10px}
+.btn{border:1px solid var(--line);background:#fff;border-radius:9px;padding:8px 14px;cursor:pointer;font-weight:500;display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
+.btn:hover{border-color:#c6cbd6}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.primary:hover{background:#244cb5}
+.btn.danger{color:var(--bad)}
+.btn.big{font-size:18px;padding:13px 28px;border-radius:12px}
+.btn.sm{padding:4px 10px;font-size:13px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.chip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:5px 12px;cursor:pointer;font-size:14px}
+.chip.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.chip.q-v.on{background:#7a3fc4;border-color:#7a3fc4}
+.chip.q-q.on{background:#0f8a7a;border-color:#0f8a7a}
+.lbl{font-size:13px;color:var(--muted);font-weight:500}
+.sep{width:1px;height:24px;background:var(--line)}
+input[type=text],input[type=number],select,textarea{border:1px solid var(--line);border-radius:8px;padding:7px 10px;background:#fff}
+input[type=number]{width:80px}
+.stats{display:flex;gap:10px;flex-wrap:wrap}
+.stat{background:var(--bg);border-radius:10px;padding:8px 12px;min-width:110px}
+.stat b{display:block;font-size:20px}
+.stat span{font-size:12px;color:var(--muted)}
+.hero{display:grid;grid-template-columns:1.3fr 1fr;gap:20px;align-items:center}
+.hero h2{font-size:26px;margin:0 0 6px}
+.steps{margin:0;padding-inline-start:20px}
+.steps li{margin:4px 0}
+@media(max-width:800px){.hero{grid-template-columns:1fr}}
+table{border-collapse:collapse;width:100%}
+th,td{text-align:right;padding:8px 10px;border-bottom:1px solid var(--line);font-size:14px}
+th{color:var(--muted);font-weight:500;font-size:13px}
+#toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(30px);background:#1c2230;color:#fff;padding:10px 18px;border-radius:10px;opacity:0;transition:.25s;z-index:100;pointer-events:none;max-width:90vw}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+#toast.bad{background:var(--bad)}
+#toast.ok{background:var(--ok)}
+.warnbox{background:#fff6e0;border:1px solid #f0d58a;color:#7a5600;border-radius:10px;padding:10px 14px;margin-bottom:14px}
+/* import */
+.toolbar{position:sticky;top:56px;z-index:20;padding:12px 16px}
+.imp-main{display:grid;grid-template-columns:minmax(0,1fr) 370px;gap:16px;align-items:start}
+.pages-wrap{overflow-x:auto}
+.pages{--zoom:1}
+.page{position:relative;width:calc(var(--zoom)*100%);margin:0 auto 16px;background:#fff;box-shadow:0 1px 5px #0002;user-select:none;-webkit-user-select:none}
+.page img{display:block;width:100%;pointer-events:none}
+.page.crop{cursor:crosshair;touch-action:none}
+.page .pno{position:absolute;top:6px;left:8px;font-size:12px;color:var(--muted);background:#fffc;padding:0 6px;border-radius:6px}
+.sel-rect{position:absolute;border:2px dashed var(--accent);background:#2b59d11f;pointer-events:none}
+.done-rect{position:absolute;border:2px solid var(--ok);background:#1d9a5412;pointer-events:none}
+.done-rect span{position:absolute;top:-2px;right:-2px;background:var(--ok);color:#fff;font-size:11px;padding:0 5px;border-radius:0 0 0 6px}
+.done-rect.g{border-color:#7a3fc4;background:#7a3fc410}.done-rect.g span{background:#7a3fc4}
+aside.items{position:sticky;top:var(--aside-top,200px);max-height:calc(100vh - var(--aside-top,200px) - 16px);overflow:auto;padding:14px}
+@media(max-width:960px){.imp-main{grid-template-columns:1fr}aside.items{position:static;max-height:none}.toolbar{top:0;position:relative}}
+.empty-pages{border:2px dashed var(--line);border-radius:14px;padding:50px 20px;text-align:center;color:var(--muted);background:#fff}
+.it{display:grid;grid-template-columns:42px 1fr auto;gap:8px;align-items:center;padding:8px;border:1px solid var(--line);border-radius:10px;margin-bottom:6px;background:#fff}
+.it.child{margin-inline-start:22px;border-style:dashed}
+.it.grp{background:#f7f2fd;border-color:#dccbf3}
+.it.last{box-shadow:0 0 0 2px var(--accent)}
+.it .num{font-weight:700;text-align:center;font-size:14px}
+.it .thumb{max-width:100%;max-height:70px;object-fit:contain;object-position:right;cursor:zoom-in;display:block;border:1px solid var(--line);border-radius:4px;background:#fff}
+.it .meta{grid-column:2/3;display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:4px}
+.it .tlabel{font-size:12px;color:var(--muted)}
+.ab{display:inline-flex;gap:3px}
+.ab button{width:28px;height:26px;border:1px solid var(--line);border-radius:6px;background:#fff;cursor:pointer;font-weight:700;font-size:13px;padding:0}
+.ab button.on{background:var(--ok);border-color:var(--ok);color:#fff}
+.it.noans .ab button{border-color:#f0c6c6}
+.x{border:0;background:none;color:var(--muted);cursor:pointer;font-size:14px;padding:4px 6px;border-radius:6px;align-self:start}
+.x:hover{background:var(--badbg);color:var(--bad)}
+.x.confirm{background:var(--bad);color:#fff;font-size:12px}
+.modal{position:fixed;inset:0;background:#0009;z-index:90;display:flex;align-items:center;justify-content:center;padding:20px;cursor:zoom-out}
+.modal img{max-width:95vw;max-height:92vh;background:#fff;border-radius:6px}
+/* exam */
+body.in-exam{overflow:hidden}
+#exam{position:fixed;inset:0;background:#fff;z-index:60;display:flex;flex-direction:column}
+#exam[hidden]{display:none}
+.exam-top{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 20px;border-bottom:1px solid var(--line);background:#fafbfc}
+.ex-info{font-size:15px}
+.ex-info b{color:var(--accent)}
+.timer{font-variant-numeric:tabular-nums;font-size:24px;font-weight:800;min-width:90px;text-align:center}
+.timer.low{color:var(--bad)}
+.exam-body{flex:1;overflow:auto;display:flex;gap:20px;padding:20px}
+.exam-body .ctx{flex:1 1 50%;overflow:auto;border-inline-end:1px solid var(--line);padding-inline-end:20px}
+.exam-body .qp{flex:1 1 50%;overflow:auto;max-width:980px;margin:0 auto}
+.exam-body.single .qp{flex:1 1 100%}
+.qimg{max-width:100%;display:block;margin:0 auto 10px;border-radius:4px}
+.ctx .qimg{margin:0 0 10px}
+.ctx-label{font-size:12px;color:var(--muted);margin-bottom:6px}
+.answers{display:flex;gap:12px;justify-content:center;margin:22px 0 14px}
+.ans{width:70px;height:58px;font-size:24px;font-weight:700;border:2px solid var(--line);border-radius:12px;background:#fff;cursor:pointer}
+.ans:hover{border-color:#b9c3dc}
+.ans.sel{border-color:var(--accent);background:var(--accent2);color:var(--accent)}
+.center{text-align:center}
+.pre-note{background:var(--accent2);color:#1d3d91;border-radius:10px;padding:10px 14px;margin-bottom:14px;text-align:center;font-weight:500}
+.break-box{margin:auto;text-align:center}
+.break-box .timer{font-size:64px;margin:16px 0}
+.essay-wrap{max-width:900px;margin:0 auto;width:100%}
+.essay-wrap textarea{width:100%;min-height:52vh;line-height:1.9;font-size:16px;resize:vertical}
+@media(max-width:820px){.exam-body{flex-direction:column;padding:14px}.exam-body .ctx{flex:none;max-height:none;overflow:visible;border:0;padding:0 0 14px;border-bottom:1px solid var(--line)}.exam-body .qp{overflow:visible}.ans{width:60px;height:52px}}
+/* results */
+.sec-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}
+.sc{border:1px solid var(--line);border-radius:12px;padding:14px;background:#fff}
+.sc .big{font-size:34px;font-weight:800}
+.bar{height:8px;background:var(--bg);border-radius:6px;overflow:hidden;margin-top:6px}
+.bar i{display:block;height:100%;background:var(--accent)}
+.rv{border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px;background:#fff}
+.rv.ok{border-inline-start:5px solid var(--ok)}
+.rv.bad{border-inline-start:5px solid var(--bad)}
+.rv-head{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px;font-size:14px}
+.rv .qimg{margin:0 0 8px;max-width:min(100%,760px)}
+.pill{border-radius:999px;padding:1px 9px;font-size:12px;font-weight:700}
+.pill.ok{background:var(--okbg);color:var(--ok)}
+.pill.bad{background:var(--badbg);color:var(--bad)}
+.pill.gray{background:var(--bg);color:var(--muted)}
+.ansrow{display:flex;gap:6px}
+.ansrow span{width:30px;height:28px;border:1px solid var(--line);border-radius:6px;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:13px}
+.ansrow span.correct{background:var(--ok);border-color:var(--ok);color:#fff}
+.ansrow span.wrong{background:var(--bad);border-color:var(--bad);color:#fff}
+details.ctxd{background:#f7f2fd;border-radius:10px;padding:8px 12px;margin:14px 0 8px}
+details.ctxd summary{cursor:pointer;font-weight:500;color:#5b2ea0}
+.prefs-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:8px 24px}
+.prefs-grid label{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:5px 0;border-bottom:1px dashed var(--line)}
+details.help summary{cursor:pointer;color:var(--accent);font-weight:500}
+details.help ol{margin:8px 0 0;padding-inline-start:20px}
+details.help li{margin:3px 0}
+.hist-row{cursor:pointer}
+.hist-row:hover{background:var(--bg)}
+kbd{background:var(--bg);border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:0 5px;font-size:12px}
+</style>
+</head>
+<body>
+<header>
+  <h1>סימולטור מפע"ם <small>תרגול מבחנים פסיכומטריים ישנים בפורמט מפע"ם</small></h1>
+  <nav id="nav">
+    <button data-v="home">בית</button>
+    <button data-v="import">ייבוא מבחן</button>
+    <button data-v="bank">מאגר שאלות</button>
+    <button data-v="past">היסטוריה</button>
+    <button data-v="prefs">הגדרות</button>
+  </nav>
+</header>
+<main id="main"></main>
+<div id="exam" hidden></div>
+<div id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"></script>
+<script>
+'use strict';
+/* ================= helpers ================= */
+const $ = (s, el = document) => el.querySelector(s);
+const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+const h = html => { const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstElementChild; };
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const fmt = s => { s = Math.ceil(s); const m = Math.floor(s / 60), r = s % 60; return m + ':' + String(r).padStart(2, '0'); };
+const fmtDate = t => new Date(t).toLocaleString('he-IL', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
+function toast(msg, kind = '') { const el = $('#toast'); el.textContent = msg; el.className = 'show ' + kind; clearTimeout(toast.t); toast.t = setTimeout(() => el.className = '', 2800); }
+const ls = {
+  get(k, d) { try { const v = localStorage.getItem('mafaam:' + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem('mafaam:' + k, JSON.stringify(v)); } catch { } }
+};
+function twoClick(btn, label, fn) {
+  btn.addEventListener('click', e => {
+    e.stopPropagation();
+    if (btn.dataset.armed) { fn(); return; }
+    btn.dataset.armed = '1'; const old = btn.innerHTML; btn.innerHTML = label; btn.classList.add('confirm');
+    setTimeout(() => { if (btn.isConnected) { delete btn.dataset.armed; btn.innerHTML = old; btn.classList.remove('confirm'); } }, 2500);
+  });
+}
+function zoomImg(src) { const m = h(`<div class="modal"><img src="${src}"></div>`); m.onclick = () => m.remove(); document.body.append(m); }
+
+/* ================= model ================= */
+const SECTION = { verbal: 'חשיבה מילולית', quant: 'חשיבה כמותית', essay: 'חיבור' };
+const TYPES = {
+  analogy:       { label: 'אנלוגיות', section: 'verbal', kind: 'q' },
+  sentence:      { label: 'השלמת משפטים', section: 'verbal', kind: 'q' },
+  comprehension: { label: 'הבנה והסקה', section: 'verbal', kind: 'q' },
+  passage:       { label: 'קטע קריאה', section: 'verbal', kind: 'group', child: 'passageQ' },
+  passageQ:      { label: 'שאלה על קטע', section: 'verbal', kind: 'child', parent: 'passage' },
+  problem:       { label: 'שאלות ובעיות', section: 'quant', kind: 'q' },
+  chart:         { label: 'תרשים / טבלה', section: 'quant', kind: 'group', child: 'chartQ' },
+  chartQ:        { label: 'שאלה על תרשים', section: 'quant', kind: 'child', parent: 'chart' },
+  essay:         { label: 'נושא חיבור', section: 'essay', kind: 'essay' }
+};
+const Q_TYPES = ['analogy', 'sentence', 'comprehension', 'problem'];
+const DEFAULTS = {
+  times: { analogy: 1.5, sentence: 3, comprehension: 4, passage: 7, passageQ: 4, problem: 4, chart: 7, chartQ: 4 },
+  count: { analogy: 5, sentence: 5, comprehension: 5, passage: 1, problem: 14, chart: 1 },
+  essay: true, essayMin: 30, breakMin: 5, adaptive: true, avoidSeen: true
+};
+function loadSettings() {
+  const s = ls.get('settings', {});
+  return { ...DEFAULTS, ...s, times: { ...DEFAULTS.times, ...(s.times || {}) }, count: { ...DEFAULTS.count, ...(s.count || {}) } };
+}
+let S = loadSettings();
+const saveSettings = () => ls.set('settings', S);
+
+/* ================= storage (IndexedDB) ================= */
+const store = { db: null, tests: new Map(), items: new Map() };
+const idbReq = r => new Promise((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+async function dbInit() {
+  try {
+    const r = indexedDB.open('mafaam-sim', 1);
+    r.onupgradeneeded = () => { const d = r.result; d.createObjectStore('tests', { keyPath: 'id' }); d.createObjectStore('items', { keyPath: 'id' }); };
+    store.db = await idbReq(r);
+    for (const name of ['tests', 'items']) {
+      const all = await idbReq(store.db.transaction(name).objectStore(name).getAll());
+      all.forEach(o => store[name].set(o.id, o));
+    }
+  } catch (e) { console.warn(e); store.db = null; storageBroken = true; }
+}
+let storageBroken = false;
+function dbPutMany(name, objs) {
+  objs.forEach(o => store[name].set(o.id, o));
+  if (!store.db) return Promise.resolve();
+  return new Promise(res => {
+    const tx = store.db.transaction(name, 'readwrite'); const os = tx.objectStore(name);
+    objs.forEach(o => os.put(o));
+    tx.oncomplete = res;
+    tx.onerror = tx.onabort = () => { toast('שגיאת שמירה: ' + (tx.error && tx.error.name), 'bad'); res(); };
+  });
+}
+const dbPut = (name, obj) => dbPutMany(name, [obj]);
+function dbDelMany(name, ids) {
+  ids.forEach(id => store[name].delete(id));
+  if (!store.db) return Promise.resolve();
+  return new Promise(res => { const tx = store.db.transaction(name, 'readwrite'); const os = tx.objectStore(name); ids.forEach(id => os.delete(id)); tx.oncomplete = res; tx.onerror = res; });
+}
+
+/* ================= queries ================= */
+const allItems = () => [...store.items.values()];
+const byOrder = (a, b) => a.order - b.order;
+const childrenOf = gid => allItems().filter(i => i.groupId === gid).sort(byOrder);
+const testItems = tid => allItems().filter(i => i.testId === tid).sort(byOrder);
+const chapterItems = (tid, ch) => testItems(tid).filter(i => i.chapter === ch);
+function isUsable(i) {
+  const k = TYPES[i.type].kind;
+  if (k === 'q') return i.answer >= 1;
+  if (k === 'group') return childrenOf(i.id).some(c => c.answer >= 1);
+  if (k === 'essay') return true;
+  return false;
+}
+function bankCounts() {
+  const c = {}; Object.keys(TYPES).forEach(t => c[t] = 0);
+  let missing = 0;
+  for (const i of allItems()) {
+    const k = TYPES[i.type].kind;
+    if (k === 'child') { if (i.answer >= 1) c[i.type]++; else missing++; continue; }
+    if (k === 'q' && !(i.answer >= 1)) { missing++; continue; }
+    if (isUsable(i)) c[i.type]++;
+  }
+  return { c, missing };
+}
+/* difficulty: position of the question inside its type, inside its original chapter (old tests go easy -> hard) */
+function computeDifficulty() {
+  const groups = {};
+  for (const i of allItems()) {
+    const k = TYPES[i.type].kind;
+    if (k !== 'q' && k !== 'group') continue;
+    const key = i.testId + '|' + i.chapter + '|' + i.type;
+    (groups[key] = groups[key] || []).push(i);
+  }
+  for (const arr of Object.values(groups)) { arr.sort(byOrder); arr.forEach((it, idx) => it._d = (idx + 0.5) / arr.length); }
+}
+
+/* ================= navigation ================= */
+let view = 'home', RESULT_ID = null;
+function go(v) {
+  view = v;
+  $$('#nav button').forEach(b => b.classList.toggle('on', b.dataset.v === v));
+  render(); window.scrollTo(0, 0);
+}
+function render() {
+  const m = $('#main'); m.innerHTML = '';
+  if (storageBroken) m.append(h(`<div class="warnbox">הדפדפן לא מאפשר שמירה מקומית — המאגר יישמר רק עד סגירת הדף. מומלץ לפתוח את האפליקציה בדפדפן רגיל (לא גלישה בסתר).</div>`));
+  ({ home: renderHome, import: renderImport, bank: renderBank, prefs: renderPrefs, past: renderPast, result: renderResult })[view](m);
+}
+$('#nav').addEventListener('click', e => { const b = e.target.closest('button'); if (b) go(b.dataset.v); });
+
+/* ================= HOME ================= */
+function renderHome(m) {
+  const { c, missing } = bankCounts();
+  const verbalN = c.analogy + c.sentence + c.comprehension + c.passageQ;
+  const quantN = c.problem + c.chartQ;
+  const can = verbalN + quantN > 0;
+  m.append(h(`<div class="card hero">
+    <div>
+      <h2>תרגול בפורמט מפע"ם</h2>
+      <p class="muted" style="margin:0 0 14px">שאלה אחת בכל פעם, זמן נפרד לכל שאלה, אי אפשר לדלג או לחזור, והמבחן מתאים את רמת הקושי לתשובות שלך. לפני כל קטע קריאה וכל תרשים יש ${S.times.passage} / ${S.times.chart} דקות לעיון בלבד, ורק אז מופיעות השאלות.</p>
+      <button class="btn primary big" id="startBtn" ${can ? '' : 'disabled'}>התחל סימולציה</button>
+      ${can ? '' : '<p class="small muted">כדי להתחיל, צריך קודם לייבא לפחות מבחן אחד ולסמן בו שאלות.</p>'}
+    </div>
+    <div>
+      <h3>איך זה עובד</h3>
+      <ol class="steps">
+        <li><b>ייבוא מבחן</b> — מעלים PDF של מבחן פסיכומטרי ישן.</li>
+        <li><b>סימון</b> — גוררים מסגרת סביב כל שאלה, בוחרים את סוג השאלה ואת התשובה הנכונה (או מדביקים מפתח תשובות).</li>
+        <li><b>סימולציה</b> — האפליקציה בונה מבחן מפע"ם מהמאגר: חיבור, חשיבה מילולית, הפסקה, חשיבה כמותית.</li>
+        <li><b>תוצאות</b> — ציון לכל חלק ולכל סוג שאלה, וסקירה של כל הטעויות.</li>
+      </ol>
+    </div>
+  </div>`));
+  m.append(h(`<div class="card"><h2>המאגר שלך</h2>
+    <div class="stats">
+      <div class="stat"><b>${store.tests.size}</b><span>מבחנים</span></div>
+      <div class="stat"><b>${verbalN}</b><span>שאלות מילולי</span></div>
+      <div class="stat"><b>${quantN}</b><span>שאלות כמותי</span></div>
+      <div class="stat"><b>${c.passage}</b><span>קטעי קריאה</span></div>
+      <div class="stat"><b>${c.chart}</b><span>תרשימים</span></div>
+      <div class="stat"><b>${c.essay}</b><span>נושאי חיבור</span></div>
+      ${missing ? `<div class="stat" style="background:#fff6e0"><b>${missing}</b><span>שאלות בלי תשובה נכונה (לא ייכנסו)</span></div>` : ''}
+    </div></div>`));
+  const hist = ls.get('history', []).slice(0, 5);
+  if (hist.length) {
+    const card = h(`<div class="card"><h2>סימולציות אחרונות</h2><table><thead><tr><th>תאריך</th><th>מילולי</th><th>כמותי</th><th></th></tr></thead><tbody></tbody></table></div>`);
+    hist.forEach(r => card.querySelector('tbody').append(histRow(r)));
+    m.append(card);
+  }
+  const sb = $('#startBtn'); if (sb) sb.onclick = startExam;
+}
+function histRow(r) {
+  const sc = sec => { const e = r.log.filter(x => x.section === sec); if (!e.length) return '—'; const ok = e.filter(x => x.ok).length; return `${ok}/${e.length} (${Math.round(100 * ok / e.length)}%)`; };
+  const tr = h(`<tr class="hist-row"><td>${fmtDate(r.date)}</td><td>${sc('verbal')}</td><td>${sc('quant')}</td><td><span class="btn sm">צפה</span></td></tr>`);
+  tr.onclick = () => { RESULT_ID = r.id; go('result'); };
+  return tr;
+}
+
+/* ================= IMPORT ================= */
+const IMP = { testId: null, pages: [], chapter: 1, type: 'analogy', appendNext: false, lastItemId: null, lastGroupId: null, zoom: 1, cropOn: true, crops: [], status: '' };
+const CHAPTERS = [1, 2, 3, 4, 5, 6, 7, 8];
+function renderImport(m) {
+  const tests = [...store.tests.values()].sort((a, b) => a.created - b.created);
+  if (IMP.testId && !store.tests.has(IMP.testId)) IMP.testId = null;
+  const head = h(`<div class="card">
+    <div class="row">
+      <span class="lbl">מבחן:</span>
+      <select id="impTest"><option value="">+ מבחן חדש</option>${tests.map(t => `<option value="${t.id}" ${t.id === IMP.testId ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select>
+      ${IMP.testId ? `<label class="btn primary">📄 העלה PDF או תמונות<input type="file" id="fileIn" accept="application/pdf,image/*" multiple hidden></label><span class="muted small" id="renderStatus">${esc(IMP.status)}</span>`
+      : `<input type="text" id="newName" placeholder="שם המבחן, למשל: חורף 2016" style="min-width:240px"><button class="btn primary" id="createTest">צור מבחן</button>`}
+    </div>
+    <details class="help" style="margin-top:10px"><summary>איך מסמנים? (חשוב לקרוא פעם אחת)</summary><ol>
+      <li>בחרו <b>פרק</b> לפי המבחן המקורי (פרק 1, 2…). פרקי אנגלית — מדלגים.</li>
+      <li>בחרו <b>סוג שאלה</b> וגררו מסגרת סביב השאלה <b>כולל ארבע התשובות</b>. סמנו לפי הסדר במבחן — הסדר קובע את רמת הקושי (בכל פרק השאלות מתקשות לקראת הסוף).</li>
+      <li><b>קטע קריאה / תרשים:</b> בחרו "קטע קריאה" או "תרשים / טבלה" וסמנו רק את הקטע או התרשים. הסוג יתחלף לבד ל"שאלה על קטע" / "שאלה על תרשים" — סמנו את השאלות שלו והן יוצמדו אליו.</li>
+      <li>שאלה או קטע שנמשכים על שני טורים או עמודים: סמנו את החלק הראשון, לחצו <b>"הוסף חלק לפריט האחרון"</b>, וסמנו את ההמשך.</li>
+      <li><b>תשובה נכונה:</b> מיד אחרי סימון שאלה לחצו <kbd>1</kbd>–<kbd>4</kbd> במקלדת, או הדביקו את כל מפתח התשובות של הפרק בתיבה שבצד.</li>
+    </ol></details>
+  </div>`);
+  m.append(head);
+  $('#impTest', head).onchange = e => { IMP.testId = e.target.value || null; IMP.lastItemId = IMP.lastGroupId = null; IMP.crops = []; render(); };
+  if (!IMP.testId) {
+    const create = () => {
+      const name = $('#newName').value.trim(); if (!name) { toast('כתבו שם למבחן'); return; }
+      const t = { id: uid(), name, created: Date.now() }; dbPut('tests', t);
+      IMP.testId = t.id; IMP.chapter = 1; IMP.type = 'analogy'; IMP.lastItemId = IMP.lastGroupId = null;
+      IMP.pages.forEach(p => URL.revokeObjectURL(p.url)); IMP.pages = []; IMP.crops = []; IMP.status = '';
+      render();
+    };
+    $('#createTest', head).onclick = create;
+    $('#newName', head).onkeydown = e => { if (e.key === 'Enter') create(); };
+    return;
+  }
+  $('#fileIn', head).onchange = e => { loadFiles([...e.target.files]); e.target.value = ''; };
+
+  const chip = t => `<button class="chip ${TYPES[t].section === 'verbal' ? 'q-v' : TYPES[t].section === 'quant' ? 'q-q' : ''} ${IMP.type === t ? 'on' : ''}" data-t="${t}">${TYPES[t].label}</button>`;
+  const tb = h(`<div class="card toolbar">
+    <div class="row">
+      <span class="lbl">פרק</span><select id="chapSel">${CHAPTERS.map(c => `<option ${c === IMP.chapter ? 'selected' : ''}>${c}</option>`).join('')}</select>
+      <span class="sep"></span>
+      <span class="lbl">מילולי:</span>${['analogy', 'sentence', 'comprehension', 'passage', 'passageQ'].map(chip).join('')}
+      <span class="sep"></span>
+      <span class="lbl">כמותי:</span>${['problem', 'chart', 'chartQ'].map(chip).join('')}
+      <span class="sep"></span>${chip('essay')}
+    </div>
+    <div class="row">
+      <button class="btn sm" id="appendBtn">➕ הוסף חלק לפריט האחרון</button>
+      <button class="btn sm" id="cropBtn"></button>
+      <span class="sep"></span>
+      <button class="btn sm" id="zOut">−</button><span class="small" id="zLbl">${Math.round(IMP.zoom * 100)}%</span><button class="btn sm" id="zIn">+</button>
+      <span class="muted small" id="hint"></span>
+    </div>
+  </div>`);
+  m.append(tb);
+  const grid = h(`<div class="imp-main"><div class="pages-wrap"><div class="pages" id="pages"></div></div><aside class="card items" id="itemList"></aside></div>`);
+  m.append(grid);
+  $('#chapSel', tb).onchange = e => { IMP.chapter = +e.target.value; renderAside(); };
+  $$('.chip', tb).forEach(b => b.onclick = () => { IMP.type = b.dataset.t; syncToolbar(); });
+  $('#appendBtn', tb).onclick = () => {
+    if (!IMP.lastItemId || !store.items.has(IMP.lastItemId)) { toast('אין פריט אחרון — סמנו קודם שאלה או קטע'); return; }
+    IMP.appendNext = !IMP.appendNext; syncToolbar();
+  };
+  $('#cropBtn', tb).onclick = () => { IMP.cropOn = !IMP.cropOn; syncToolbar(); renderPages(); };
+  $('#zIn', tb).onclick = () => setZoom(IMP.zoom + 0.25);
+  $('#zOut', tb).onclick = () => setZoom(IMP.zoom - 0.25);
+  syncToolbar(); renderPages(); renderAside(); fitAside();
+}
+function fitAside() { const tb = $('.toolbar'), hd = $('header'); if (tb && hd) document.documentElement.style.setProperty('--aside-top', (hd.offsetHeight + tb.offsetHeight + 12) + 'px'); }
+window.addEventListener('resize', fitAside);
+function setZoom(z) { IMP.zoom = clamp(z, 0.5, 3); const p = $('#pages'); if (p) p.style.setProperty('--zoom', IMP.zoom); const l = $('#zLbl'); if (l) l.textContent = Math.round(IMP.zoom * 100) + '%'; }
+function syncToolbar() {
+  $$('.toolbar .chip').forEach(b => b.classList.toggle('on', b.dataset.t === IMP.type));
+  const ab = $('#appendBtn'); if (ab) { ab.classList.toggle('primary', IMP.appendNext); ab.textContent = IMP.appendNext ? '➕ המסגרת הבאה תצורף לפריט האחרון (לחצו לביטול)' : '➕ הוסף חלק לפריט האחרון'; }
+  const cb = $('#cropBtn'); if (cb) cb.textContent = IMP.cropOn ? '✂️ מצב סימון (לחצו לגלילה חופשית)' : '🖐 מצב גלילה (לחצו לסימון)';
+  const T = TYPES[IMP.type]; let hint;
+  if (IMP.appendNext) hint = 'גררו מסגרת סביב ההמשך של הפריט האחרון';
+  else if (T.kind === 'group') hint = `גררו מסגרת סביב ה${T.label} בלבד, בלי השאלות`;
+  else if (T.kind === 'child') hint = `גררו מסגרת סביב שאלה — היא תוצמד ל${TYPES[T.parent].label} האחרון שסימנתם`;
+  else if (T.kind === 'essay') hint = 'גררו מסגרת סביב נושא החיבור';
+  else hint = 'גררו מסגרת סביב השאלה כולל 4 התשובות, ואז לחצו 1–4 לתשובה הנכונה';
+  const he = $('#hint'); if (he) he.textContent = hint;
+}
+function renderPages() {
+  const wrap = $('#pages'); if (!wrap) return;
+  wrap.style.setProperty('--zoom', IMP.zoom);
+  wrap.innerHTML = '';
+  if (!IMP.pages.length) { wrap.append(h(`<div class="empty-pages"><div style="font-size:40px">📄</div><div>העלו קובץ PDF של המבחן (או תמונות של העמודים) כדי להתחיל לסמן.</div><div class="small" style="margin-top:6px">אפשר גם רק לערוך את השאלות שכבר סומנו — הן מופיעות ברשימה בצד.</div></div>`)); return; }
+  IMP.pages.forEach((p, i) => wrap.append(pageEl(p, i)));
+}
+function pageEl(p, i) {
+  const div = h(`<div class="page ${IMP.cropOn ? 'crop' : ''}"><img src="${p.url}" alt=""><span class="pno">עמוד ${i + 1}</span></div>`);
+  IMP.crops.filter(c => c.page === i && store.items.has(c.itemId)).forEach(c => div.append(cropRectEl(c)));
+  let start = null, rect = null, last = null, raf = 0;
+  const pos = e => { const b = div.getBoundingClientRect(); return { x: clamp((e.clientX - b.left) / b.width, 0, 1), y: clamp((e.clientY - b.top) / b.height, 0, 1) }; };
+  const draw = () => {
+    const c = pos(last);
+    Object.assign(rect.style, { left: Math.min(start.x, c.x) * 100 + '%', top: Math.min(start.y, c.y) * 100 + '%', width: Math.abs(c.x - start.x) * 100 + '%', height: Math.abs(c.y - start.y) * 100 + '%' });
+  };
+  // auto-scroll when dragging near the top/bottom edge, so long passages can be selected in one drag
+  const autoScroll = () => {
+    if (!start) return;
+    const tb = $('.toolbar'); const topZone = Math.max(0, tb ? tb.getBoundingClientRect().bottom : 0) + 40;
+    const y = last.clientY, H = window.innerHeight, edge = 50;
+    const dy = y > H - edge ? (y - (H - edge)) / 3 : y < topZone ? -(topZone - y) / 3 : 0;
+    if (dy) { window.scrollBy(0, dy); draw(); }
+    raf = requestAnimationFrame(autoScroll);
+  };
+  div.addEventListener('pointerdown', e => {
+    if (!IMP.cropOn || e.button !== 0) return;
+    start = pos(e); last = { clientX: e.clientX, clientY: e.clientY }; rect = h('<div class="sel-rect"></div>'); div.append(rect);
+    div.setPointerCapture(e.pointerId); e.preventDefault(); raf = requestAnimationFrame(autoScroll);
+  });
+  div.addEventListener('pointermove', e => {
+    if (!start) return; last = { clientX: e.clientX, clientY: e.clientY }; draw();
+  });
+  const end = e => {
+    if (!start) return; cancelAnimationFrame(raf); const c = pos(e); const r = { x: Math.min(start.x, c.x), y: Math.min(start.y, c.y), w: Math.abs(c.x - start.x), h: Math.abs(c.y - start.y) };
+    start = null; rect.remove(); rect = null;
+    if (r.w < 0.03 || r.h < 0.012) return;
+    doCrop(i, r, div);
+  };
+  div.addEventListener('pointerup', end);
+  div.addEventListener('pointercancel', () => { cancelAnimationFrame(raf); start = null; if (rect) rect.remove(); rect = null; });
+  return div;
+}
+function cropRectEl(c) {
+  const it = store.items.get(c.itemId); const isG = it && TYPES[it.type].kind === 'group';
+  const el = h(`<div class="done-rect ${isG ? 'g' : ''}"><span>${esc(c.label)}</span></div>`);
+  Object.assign(el.style, { left: c.r.x * 100 + '%', top: c.r.y * 100 + '%', width: c.r.w * 100 + '%', height: c.r.h * 100 + '%' });
+  return el;
+}
+function loadImage(url) { return new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = url; }); }
+async function doCrop(pi, r, pageDiv) {
+  const img = await loadImage(IMP.pages[pi].url);
+  const W = img.naturalWidth, H = img.naturalHeight;
+  const sx = r.x * W, sy = r.y * H, sw = r.w * W, sh = r.h * H;
+  const f = Math.min(1, 1100 / W);
+  const c = document.createElement('canvas'); c.width = Math.round(sw * f); c.height = Math.round(sh * f);
+  const ctx = c.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(img, sx, sy, sw, sh, 0, 0, c.width, c.height);
+  const data = c.toDataURL('image/jpeg', 0.9);
+  await addCrop(data, pi, r, pageDiv);
+}
+function nextOrder(tid) { let m = 0; for (const i of store.items.values()) if (i.testId === tid && i.order > m) m = i.order; return m + 1; }
+async function addCrop(data, pi, r, pageDiv) {
+  let item, label;
+  if (IMP.appendNext && store.items.has(IMP.lastItemId)) {
+    item = store.items.get(IMP.lastItemId); item.imgs.push(data); IMP.appendNext = false;
+    label = '+'; await dbPut('items', item); syncToolbar();
+  } else {
+    const T = TYPES[IMP.type];
+    item = { id: uid(), testId: IMP.testId, chapter: IMP.chapter, type: IMP.type, imgs: [data], answer: 0, order: nextOrder(IMP.testId), created: Date.now() };
+    if (T.kind === 'child') {
+      const g = store.items.get(IMP.lastGroupId);
+      if (!g || g.type !== T.parent || g.testId !== IMP.testId) { toast(`קודם סמנו את ה${TYPES[T.parent].label} עצמו`, 'bad'); return; }
+      item.groupId = g.id; item.chapter = g.chapter;
+    }
+    await dbPut('items', item);
+    if (T.kind === 'group') { IMP.lastGroupId = item.id; IMP.type = T.child; syncToolbar(); toast(`${T.label} נשמר — עכשיו סמנו את השאלות שלו`, 'ok'); }
+    label = labelFor(item);
+  }
+  IMP.lastItemId = item.id;
+  const c = { page: pi, r, itemId: item.id, label };
+  IMP.crops.push(c); pageDiv.append(cropRectEl(c));
+  if (item.chapter !== IMP.chapter) IMP.chapter = item.chapter;
+  renderAside(true);
+}
+function chapterNumbering(tid, ch) {
+  const list = chapterItems(tid, ch); const num = {}; let n = 0, g = 0;
+  list.forEach(i => { const k = TYPES[i.type].kind; if (k === 'q' || k === 'child') num[i.id] = String(++n); else if (k === 'group') num[i.id] = (i.type === 'passage' ? 'קטע ' : 'תרשים ') + (++g); else num[i.id] = 'חיבור'; });
+  return { list, num };
+}
+function labelFor(item) { return chapterNumbering(item.testId, item.chapter).num[item.id] || ''; }
+function renderAside(scrollToLast) {
+  const el = $('#itemList'); if (!el) return;
+  const { list, num } = chapterNumbering(IMP.testId, IMP.chapter);
+  const qs = list.filter(i => ['q', 'child'].includes(TYPES[i.type].kind));
+  const missing = qs.filter(i => !(i.answer >= 1)).length;
+  const counts = CHAPTERS.map(c => ({ c, n: chapterItems(IMP.testId, c).length })).filter(x => x.n);
+  el.innerHTML = '';
+  el.append(h(`<div><h3>פרק ${IMP.chapter} · ${qs.length} שאלות ${missing ? `<span class="pill bad">${missing} בלי תשובה</span>` : qs.length ? '<span class="pill ok">מלא</span>' : ''}</h3>
+    ${counts.length ? `<div class="small muted" style="margin-bottom:8px">פרקים במבחן: ${counts.map(x => `<a href="#" data-c="${x.c}">פרק ${x.c}</a> (${x.n})`).join(' · ')}</div>` : ''}
+    <div class="row" style="margin-bottom:12px"><input type="text" id="keyIn" placeholder="מפתח תשובות לפרק, למשל 3142213…" style="flex:1;min-width:0;direction:ltr;text-align:left"><button class="btn sm" id="keyBtn">החל</button></div>
+  </div>`));
+  $$('a[data-c]', el).forEach(a => a.onclick = e => { e.preventDefault(); IMP.chapter = +a.dataset.c; const s = $('#chapSel'); if (s) s.value = IMP.chapter; renderAside(); });
+  $('#keyBtn', el).onclick = () => {
+    const raw = $('#keyIn', el).value;
+    if (/[05-9]/.test(raw)) { toast('רק הספרות 1–4, לפי הסדר, בלי מספרי שאלות', 'bad'); return; }
+    const d = (raw.match(/[1-4]/g) || []).map(Number); if (!d.length) return;
+    qs.forEach((q, i) => { if (i < d.length) q.answer = d[i]; });
+    dbPutMany('items', qs.slice(0, d.length));
+    toast(d.length === qs.length ? `הוזנו ${d.length} תשובות ✓` : `הוזנו ${Math.min(d.length, qs.length)} תשובות — שימו לב: במפתח ${d.length}, בפרק ${qs.length} שאלות`, d.length === qs.length ? 'ok' : 'bad');
+    renderAside();
+  };
+  if (!list.length) el.append(h(`<p class="muted small">עוד לא סומנו פריטים בפרק הזה.</p>`));
+  list.forEach(i => {
+    const T = TYPES[i.type]; const isQ = T.kind === 'q' || T.kind === 'child';
+    const row = h(`<div class="it ${T.kind === 'child' ? 'child' : ''} ${T.kind === 'group' ? 'grp' : ''} ${i.id === IMP.lastItemId ? 'last' : ''} ${isQ && !(i.answer >= 1) ? 'noans' : ''}">
+      <div class="num">${esc(num[i.id])}</div>
+      <div><img class="thumb" src="${i.imgs[0]}" alt="">
+        <div class="meta">
+          ${T.kind === 'q' ? `<select class="tsel">${Q_TYPES.map(t => `<option value="${t}" ${t === i.type ? 'selected' : ''}>${TYPES[t].label}</option>`).join('')}</select>` : `<span class="tlabel">${T.label}${i.imgs.length > 1 ? ` · ${i.imgs.length} חלקים` : ''}</span>`}
+          ${isQ ? `<span class="ab">${[1, 2, 3, 4].map(n => `<button data-n="${n}" class="${i.answer === n ? 'on' : ''}">${n}</button>`).join('')}</span>` : ''}
+        </div></div>
+      <button class="x" title="מחק">✕</button>
+    </div>`);
+    $('.thumb', row).onclick = () => zoomImg(i.imgs[0]);
+    $$('.ab button', row).forEach(b => b.onclick = () => setAnswer(i.id, +b.dataset.n));
+    const ts = $('.tsel', row); if (ts) ts.onchange = () => { i.type = ts.value; dbPut('items', i); };
+    row.addEventListener('click', e => { if (e.target.closest('button,select,img')) return; IMP.lastItemId = i.id; if (T.kind === 'group') IMP.lastGroupId = i.id; renderAside(); });
+    twoClick($('.x', row), 'למחוק?', async () => {
+      const ids = [i.id, ...childrenOf(i.id).map(c => c.id)];
+      await dbDelMany('items', ids);
+      if (ids.includes(IMP.lastItemId)) IMP.lastItemId = null;
+      if (ids.includes(IMP.lastGroupId)) IMP.lastGroupId = null;
+      renderAside(); renderPages();
+    });
+    el.append(row);
+  });
+  if (scrollToLast) { const last = $('.it.last', el); if (last) last.scrollIntoView({ block: 'nearest' }); }
+}
+function setAnswer(id, n) {
+  const i = store.items.get(id); if (!i) return;
+  const k = TYPES[i.type].kind; if (k !== 'q' && k !== 'child') return;
+  i.answer = n; dbPut('items', i); renderAside();
+}
+async function loadFiles(files) {
+  if (!files.length) return;
+  IMP.pages.forEach(p => URL.revokeObjectURL(p.url)); IMP.pages = []; IMP.crops = [];
+  renderPages();
+  const status = s => { IMP.status = s; const el = $('#renderStatus'); if (el) el.textContent = s; };
+  const addPage = url => { IMP.pages.push({ url }); const wrap = $('#pages'); if (!wrap) return; if (IMP.pages.length === 1) wrap.innerHTML = ''; wrap.append(pageEl(IMP.pages.at(-1), IMP.pages.length - 1)); };
+  for (const f of files) {
+    if (f.type === 'application/pdf' || /\.pdf$/i.test(f.name)) {
+      if (!window.pdfjsLib) { toast('רכיב קריאת ה-PDF לא נטען — בדקו חיבור לאינטרנט ורעננו', 'bad'); continue; }
+      try {
+        const pdf = await pdfjsLib.getDocument({ data: await f.arrayBuffer(), cMapUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/', cMapPacked: true, standardFontDataUrl: 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/standard_fonts/' }).promise;
+        for (let p = 1; p <= pdf.numPages; p++) {
+          status(`מעבד עמוד ${p} מתוך ${pdf.numPages}…`);
+          const page = await pdf.getPage(p);
+          const vp = page.getViewport({ scale: 1600 / page.getViewport({ scale: 1 }).width });
+          const c = document.createElement('canvas'); c.width = Math.round(vp.width); c.height = Math.round(vp.height);
+          const ctx = c.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+          await page.render({ canvasContext: ctx, viewport: vp }).promise;
+          const blob = await new Promise(r => c.toBlob(r, 'image/jpeg', 0.9));
+          c.width = c.height = 0; page.cleanup();
+          addPage(URL.createObjectURL(blob));
+        }
+        pdf.destroy();
+      } catch (e) { console.error(e); toast('לא הצלחתי לפתוח את הקובץ: ' + f.name, 'bad'); }
+    } else if (f.type.startsWith('image/')) addPage(URL.createObjectURL(f));
+  }
+  status(IMP.pages.length ? `${IMP.pages.length} עמודים מוכנים לסימון` : '');
+}
+
+/* ================= BANK ================= */
+function renderBank(m) {
+  const tests = [...store.tests.values()].sort((a, b) => a.created - b.created);
+  const card = h(`<div class="card"><h2>מאגר השאלות</h2>
+    ${tests.length ? `<table><thead><tr><th>מבחן</th><th>אנלוגיות</th><th>השלמת משפטים</th><th>הבנה והסקה</th><th>קטעים (שאלות)</th><th>בעיות</th><th>תרשימים (שאלות)</th><th>חיבור</th><th>בלי תשובה</th><th></th></tr></thead><tbody></tbody></table>` : '<p class="muted">המאגר ריק. התחילו ב"ייבוא מבחן".</p>'}
+  </div>`);
+  tests.forEach(t => {
+    const its = testItems(t.id); const n = ty => its.filter(i => i.type === ty).length;
+    const miss = its.filter(i => ['q', 'child'].includes(TYPES[i.type].kind) && !(i.answer >= 1)).length;
+    const tr = h(`<tr><td><b>${esc(t.name)}</b></td><td>${n('analogy')}</td><td>${n('sentence')}</td><td>${n('comprehension')}</td><td>${n('passage')} (${n('passageQ')})</td><td>${n('problem')}</td><td>${n('chart')} (${n('chartQ')})</td><td>${n('essay')}</td><td>${miss ? `<span class="pill bad">${miss}</span>` : '<span class="pill ok">0</span>'}</td>
+      <td class="row" style="flex-wrap:nowrap"><button class="btn sm ed">ערוך / סמן</button><button class="btn sm rn">שנה שם</button><button class="x del">✕</button></td></tr>`);
+    $('.ed', tr).onclick = () => { if (IMP.testId !== t.id) { IMP.testId = t.id; IMP.lastItemId = IMP.lastGroupId = null; IMP.crops = []; IMP.pages.forEach(p => URL.revokeObjectURL(p.url)); IMP.pages = []; IMP.status = ''; } go('import'); };
+    $('.rn', tr).onclick = () => {
+      const td = tr.firstElementChild; td.innerHTML = ''; const inp = h(`<input type="text" value="${esc(t.name)}">`); td.append(inp); inp.focus();
+      const save = () => { const v = inp.value.trim(); if (v) { t.name = v; dbPut('tests', t); } render(); };
+      inp.onkeydown = e => { if (e.key === 'Enter') save(); if (e.key === 'Escape') render(); }; inp.onblur = save;
+    };
+    twoClick($('.del', tr), 'למחוק את המבחן?', async () => { await dbDelMany('items', its.map(i => i.id)); await dbDelMany('tests', [t.id]); render(); });
+    card.querySelector('tbody').append(tr);
+  });
+  m.append(card);
+  const io = h(`<div class="card"><h2>גיבוי ושיתוף</h2>
+    <p class="muted small" style="margin-top:0">המאגר נשמר רק בדפדפן הזה. ייצוא יוצר קובץ שאפשר לגבות או לשלוח לחבר, וייבוא מוסיף את השאלות שבקובץ למאגר.</p>
+    <div class="row"><button class="btn" id="expBtn">⬇️ ייצוא המאגר לקובץ</button>
+    <label class="btn">⬆️ ייבוא מאגר מקובץ<input type="file" id="impBank" accept=".json,application/json" hidden></label></div>
+  </div>`);
+  m.append(io);
+  $('#expBtn', io).onclick = async () => {
+    const data = { app: 'mafaam-sim', v: 1, tests: [...store.tests.values()], items: allItems().map(({ _d, ...i }) => i) };
+    const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+    const filename = 'mafaam-bank-' + new Date().toISOString().slice(0, 10) + '.json';
+    // inside claude.ai the page must ask the host to save; elsewhere (GitHub Pages / local file) a normal download works
+    if (window.claude && window.claude.use) {
+      const dl = await window.claude.use('downloads').catch(() => null);
+      if (dl) { try { await dl.save({ filename, data: blob }); toast('נשמר', 'ok'); } catch (e) { if (e && e.code !== 'declined') toast('השמירה לא הצליחה', 'bad'); } return; }
+    }
+    try {
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+      a.download = filename; document.body.append(a); a.click(); a.remove();
+    } catch { toast('ההורדה נחסמה בדפדפן הזה', 'bad'); }
+  };
+  $('#impBank', io).onchange = async e => {
+    const f = e.target.files[0]; if (!f) return;
+    try {
+      const d = JSON.parse(await f.text());
+      if (d.app !== 'mafaam-sim' || !Array.isArray(d.items) || !Array.isArray(d.tests)) throw 0;
+      const items = d.items.filter(i => i && i.id && TYPES[i.type] && Array.isArray(i.imgs));
+      await dbPutMany('tests', d.tests.filter(t => t && t.id)); await dbPutMany('items', items);
+      toast(`יובאו ${d.tests.length} מבחנים, ${items.length} פריטים`, 'ok'); render();
+    } catch { toast('הקובץ לא תקין', 'bad'); }
+  };
+}
+
+/* ================= PREFS ================= */
+function renderPrefs(m) {
+  const num = (path, label, step = 0.5) => { const [a, b] = path.split('.'); const v = b ? S[a][b] : S[a]; return `<label>${label}<input type="number" min="0" step="${step}" data-p="${path}" value="${v}"></label>`; };
+  const chk = (key, label) => `<label>${label}<input type="checkbox" data-c="${key}" ${S[key] ? 'checked' : ''}></label>`;
+  const card = h(`<div>
+    <div class="card"><h2>זמנים (בדקות)</h2><p class="muted small" style="margin-top:0">ברירת המחדל לפי אתר המרכז הארצי לבחינות. זמן העיון בקטע ובתרשים ניתן <b>לפני</b> שהשאלות מופיעות.</p><div class="prefs-grid">
+      ${num('times.analogy', 'אנלוגיה')}${num('times.sentence', 'השלמת משפטים')}${num('times.comprehension', 'הבנה והסקה')}
+      ${num('times.passage', 'עיון בקטע קריאה (לפני השאלות)')}${num('times.passageQ', 'שאלה על קטע')}
+      ${num('times.problem', 'שאלות ובעיות')}${num('times.chart', 'עיון בתרשים / טבלה (לפני השאלות)')}${num('times.chartQ', 'שאלה על תרשים')}
+      ${num('essayMin', 'חיבור', 1)}${num('breakMin', 'הפסקה', 0.5)}
+    </div></div>
+    <div class="card"><h2>מבנה הסימולציה</h2><p class="muted small" style="margin-top:0">כמה פריטים מכל סוג ייכנסו לכל סימולציה (אם יש פחות במאגר — ייכנס מה שיש).</p><div class="prefs-grid">
+      ${num('count.analogy', 'אנלוגיות', 1)}${num('count.sentence', 'השלמת משפטים', 1)}${num('count.comprehension', 'הבנה והסקה', 1)}${num('count.passage', 'קטעי קריאה', 1)}
+      ${num('count.problem', 'שאלות ובעיות', 1)}${num('count.chart', 'תרשימים / טבלאות', 1)}
+      ${chk('essay', 'לכלול חיבור בתחילת המבחן')}${chk('adaptive', 'מבחן מותאם (קושי לפי התשובות)')}${chk('avoidSeen', 'להעדיף שאלות שעוד לא ראיתי')}
+    </div>
+    <div class="row" style="margin-top:14px"><button class="btn" id="resetSeen">אפס "שאלות שראיתי"</button><button class="btn" id="resetPrefs">החזר ברירות מחדל</button></div></div>
+  </div>`);
+  m.append(card);
+  $$('input[data-p]', card).forEach(inp => inp.onchange = () => { const [a, b] = inp.dataset.p.split('.'); const v = Math.max(0, parseFloat(inp.value) || 0); if (b) S[a][b] = v; else S[a] = v; saveSettings(); toast('נשמר', 'ok'); });
+  $$('input[data-c]', card).forEach(inp => inp.onchange = () => { S[inp.dataset.c] = inp.checked; saveSettings(); toast('נשמר', 'ok'); });
+  $('#resetSeen', card).onclick = () => { ls.set('seen', []); toast('אופס', 'ok'); };
+  $('#resetPrefs', card).onclick = () => { S = loadSettings(); S = { ...DEFAULTS, times: { ...DEFAULTS.times }, count: { ...DEFAULTS.count } }; saveSettings(); render(); toast('הוחזרו ברירות המחדל', 'ok'); };
+}
+
+/* ================= HISTORY ================= */
+function renderPast(m) {
+  const hist = ls.get('history', []);
+  const card = h(`<div class="card"><h2>היסטוריית סימולציות</h2>${hist.length ? '<table><thead><tr><th>תאריך</th><th>מילולי</th><th>כמותי</th><th></th></tr></thead><tbody></tbody></table>' : '<p class="muted">עוד לא נעשו סימולציות.</p>'}</div>`);
+  hist.forEach(r => card.querySelector('tbody').append(histRow(r)));
+  m.append(card);
+}
+
+/* ================= EXAM ENGINE ================= */
+let EX = null, TM = null;
+function stopTimer() { if (TM) clearInterval(TM); TM = null; }
+function startTimer(sec, onEnd) {
+  stopTimer(); const end = performance.now() + sec * 1000;
+  const tick = () => {
+    const left = Math.max(0, (end - performance.now()) / 1000);
+    const el = $('#exTimer'); if (el) { el.textContent = fmt(left); el.classList.toggle('low', left <= 30); }
+    if (left <= 0) { stopTimer(); onEnd(); }
+  };
+  TM = setInterval(tick, 200); tick();
+}
+function usableOf(type) { return allItems().filter(i => i.type === type && isUsable(i)); }
+function startExam() {
+  computeDifficulty();
+  const has = t => usableOf(t).length > 0;
+  const slots = [];
+  if (S.essay) slots.push({ kind: 'essay' }, { kind: 'break', label: 'הפסקה — סוף החיבור' });
+  for (const t of ['analogy', 'sentence', 'comprehension']) if (S.count[t] > 0 && has(t)) slots.push({ kind: 'block', type: t, left: S.count[t] });
+  if (S.count.passage > 0 && has('passage')) slots.push({ kind: 'groups', type: 'passage', left: S.count.passage });
+  slots.push({ kind: 'break', label: 'הפסקה — סוף החלק המילולי' });
+  const pN = S.count.problem; const p1 = Math.ceil(pN / 2);
+  if (pN > 0 && has('problem')) slots.push({ kind: 'block', type: 'problem', left: p1 });
+  if (S.count.chart > 0 && has('chart')) slots.push({ kind: 'groups', type: 'chart', left: S.count.chart });
+  if (pN - p1 > 0 && has('problem')) slots.push({ kind: 'block', type: 'problem', left: pN - p1 });
+  // prune breaks that are first / last / doubled
+  const pruned = [];
+  slots.forEach(s => { if (s.kind === 'break' && (!pruned.length || pruned.at(-1).kind === 'break')) return; pruned.push(s); });
+  while (pruned.length && pruned.at(-1).kind === 'break') pruned.pop();
+  if (!pruned.some(s => s.kind === 'block' || s.kind === 'groups')) { toast('אין במאגר שאלות עם תשובה נכונה — סמנו שאלות קודם', 'bad'); return; }
+  EX = { id: uid(), date: Date.now(), slots: pruned, si: 0, theta: { verbal: 0.5, quant: 0.5 }, nAns: { verbal: 0, quant: 0 }, qn: { verbal: 0, quant: 0 }, used: new Set(), seen: new Set(ls.get('seen', [])), log: [], groupRead: {}, essay: null, key: null };
+  document.body.classList.add('in-exam'); $('#exam').hidden = false;
+  advance();
+}
+function pickFrom(cands, section) {
+  if (!cands.length) return null;
+  if (S.avoidSeen) { const fresh = cands.filter(c => !EX.seen.has(c.id)); if (fresh.length) cands = fresh; }
+  if (S.adaptive && section !== 'essay') {
+    const th = EX.theta[section];
+    cands = [...cands].sort((a, b) => Math.abs((a._d ?? .5) - th) - Math.abs((b._d ?? .5) - th));
+    const top = cands.slice(0, 3).filter(c => Math.abs((c._d ?? .5) - th) <= Math.abs((cands[0]._d ?? .5) - th) + 0.12);
+    return top[Math.floor(Math.random() * top.length)];
+  }
+  return cands[Math.floor(Math.random() * cands.length)];
+}
+const pick = type => pickFrom(usableOf(type).filter(i => !EX.used.has(i.id)), TYPES[type].section);
+function advance() {
+  EX.key = null;
+  const slot = EX.slots[EX.si];
+  if (!slot) return finishExam();
+  if (slot.kind === 'essay' || slot.kind === 'break') {
+    if (slot.shown) { EX.si++; return advance(); }
+    slot.shown = true; return slot.kind === 'essay' ? showEssay() : showBreak(slot);
+  }
+  if (slot.kind === 'block') {
+    if (slot.left > 0) { const it = pick(slot.type); if (it) { slot.left--; EX.used.add(it.id); return showQuestion(it, null); } }
+    EX.si++; return advance();
+  }
+  if (slot.kind === 'groups') {
+    if (slot.queue && slot.queue.length) return showQuestion(slot.queue.shift(), slot.group);
+    if (slot.left > 0) {
+      const g = pick(slot.type);
+      if (g) { slot.left--; EX.used.add(g.id); slot.group = g; slot.queue = childrenOf(g.id).filter(c => c.answer >= 1); return showPreview(g); }
+    }
+    EX.si++; return advance();
+  }
+}
+function imgsHtml(item) { return item.imgs.map(s => `<img class="qimg" src="${s}" alt="">`).join(''); }
+function shell(info, body, cls = 'single') {
+  $('#exam').innerHTML = `<div class="exam-top"><div class="ex-info">${info}</div><div class="timer" id="exTimer"></div><button class="btn sm" id="exQuit">יציאה מהמבחן</button></div><div class="exam-body ${cls}">${body}</div>`;
+  twoClick($('#exQuit'), 'לצאת? המבחן לא יישמר', quitExam);
+  $('.exam-body').scrollTop = 0;
+}
+function quitExam() { stopTimer(); EX = null; $('#exam').hidden = true; $('#exam').innerHTML = ''; document.body.classList.remove('in-exam'); go('home'); }
+function showQuestion(item, group) {
+  const T = TYPES[item.type]; const sec = T.section; EX.qn[sec]++;
+  const info = `<b>${SECTION[sec]}</b> · ${T.label} · שאלה ${EX.qn[sec]}`;
+  const ctx = group ? `<div class="ctx"><div class="ctx-label">${TYPES[group.type].label}</div>${imgsHtml(group)}</div>` : '';
+  shell(info, `${ctx}<div class="qp">${imgsHtml(item)}
+    <div class="answers">${[1, 2, 3, 4].map(n => `<button class="ans" data-n="${n}">${n}</button>`).join('')}</div>
+    <div class="center"><button class="btn primary big" id="exNext">אישור והמשך ←</button><div class="small muted" style="margin-top:8px">אי אפשר לחזור לשאלה אחרי האישור</div></div></div>`, group ? 'split' : 'single');
+  let chosen = 0, armed = false, done = false; const t0 = performance.now();
+  const choose = n => { chosen = n; armed = false; $('#exNext').textContent = 'אישור והמשך ←'; $$('.ans').forEach(b => b.classList.toggle('sel', +b.dataset.n === n)); };
+  $$('.ans').forEach(b => b.onclick = () => choose(+b.dataset.n));
+  const next = () => { if (!chosen && !armed) { armed = true; $('#exNext').textContent = 'להמשיך בלי לענות?'; return; } record(false); };
+  $('#exNext').onclick = next;
+  EX.key = e => { if (/^[1-4]$/.test(e.key)) choose(+e.key); else if (e.key === 'Enter') { e.preventDefault(); next(); } };
+  function record(timedOut) {
+    if (done) return; done = true; stopTimer();
+    const ok = chosen === item.answer;
+    EX.log.push({ id: item.id, groupId: group ? group.id : null, section: sec, type: item.type, chosen, correct: item.answer, ok, time: Math.round((performance.now() - t0) / 1000), limit: S.times[item.type] * 60, timedOut, d: item._d ?? null, theta: EX.theta[sec] });
+    if (S.adaptive) { const k = EX.nAns[sec]++; const step = Math.max(0.05, 0.2 * Math.pow(0.88, k)); EX.theta[sec] = clamp(EX.theta[sec] + (ok ? step : -step), 0, 1); }
+    advance();
+  }
+  startTimer(S.times[item.type] * 60, () => record(true));
+}
+function showPreview(group) {
+  const T = TYPES[group.type]; const mins = S.times[group.type];
+  const what = group.type === 'passage' ? 'לקרוא את הקטע' : 'לעיין בתרשים / בטבלה';
+  shell(`<b>${SECTION[T.section]}</b> · ${T.label} · זמן עיון`, `<div class="qp">
+    <div class="pre-note">יש לך ${mins} דקות ${what}. השאלות יופיעו אחר כך, וה${T.label} יישאר מוצג לידן.</div>
+    ${imgsHtml(group)}
+    <div class="center" style="margin-top:16px"><button class="btn primary big" id="exNext">סיימתי, עבור לשאלות ←</button></div></div>`);
+  const t0 = performance.now(); let done = false;
+  const go2 = () => { if (done) return; done = true; stopTimer(); EX.groupRead[group.id] = Math.round((performance.now() - t0) / 1000); advance(); };
+  $('#exNext').onclick = go2;
+  startTimer(mins * 60, go2);
+}
+function showEssay() {
+  const topics = usableOf('essay').filter(i => !EX.used.has(i.id));
+  const topic = topics.length ? pickFrom(topics, 'essay') : null;
+  if (topic) EX.used.add(topic.id);
+  shell(`<b>חיבור</b> · 25–50 שורות`, `<div class="essay-wrap">
+    ${topic ? imgsHtml(topic) : `<div class="pre-note">לא הועלו נושאי חיבור למאגר — כתבו נושא בעצמכם בשורה הראשונה, או סמנו נושאים בייבוא (סוג "נושא חיבור").</div>`}
+    <textarea id="essayTxt" spellcheck="false" autocorrect="off" autocapitalize="off" placeholder="כתבו כאן את החיבור…"></textarea>
+    <div class="row" style="justify-content:space-between;margin-top:8px"><span class="muted small" id="wc">0 מילים</span><button class="btn primary" id="exNext">סיימתי את החיבור ←</button></div></div>`);
+  const ta = $('#essayTxt'); ta.focus();
+  ta.oninput = () => { const w = ta.value.trim() ? ta.value.trim().split(/\s+/).length : 0; $('#wc').textContent = `${w} מילים · בערך ${Math.max(0, Math.round(w / 11))} שורות`; };
+  let done = false;
+  const fin = () => { if (done) return; done = true; stopTimer(); EX.essay = { topicId: topic ? topic.id : null, text: ta.value }; advance(); };
+  twoClick($('#exNext'), 'בטוח? אי אפשר לחזור', fin);
+  startTimer(S.essayMin * 60, fin);
+}
+function showBreak(slot) {
+  shell(`<b>הפסקה</b>`, `<div class="break-box"><h2>${esc(slot.label)}</h2><div class="timer" id="exTimer2"></div><button class="btn primary big" id="exNext">קצר את ההפסקה והמשך ←</button></div>`);
+  $('#exTimer').id = 'exTimerTop'; $('#exTimer2').id = 'exTimer';
+  let done = false; const fin = () => { if (done) return; done = true; stopTimer(); advance(); };
+  $('#exNext').onclick = fin;
+  startTimer(S.breakMin * 60, fin);
+}
+function finishExam() {
+  stopTimer();
+  const rec = { id: EX.id, date: EX.date, log: EX.log, essay: EX.essay, theta: EX.theta, groupRead: EX.groupRead };
+  const hist = ls.get('history', []); hist.unshift(rec); ls.set('history', hist.slice(0, 60));
+  const seen = new Set(ls.get('seen', [])); EX.used.forEach(id => seen.add(id)); ls.set('seen', [...seen]);
+  EX = null; $('#exam').hidden = true; $('#exam').innerHTML = ''; document.body.classList.remove('in-exam');
+  RESULT_ID = rec.id; go('result');
+}
+document.addEventListener('keydown', e => {
+  if (EX) { if (EX.key && !/TEXTAREA|INPUT/.test(e.target.tagName)) EX.key(e); return; }
+  if (view === 'import' && IMP.lastItemId && /^[1-4]$/.test(e.key) && !/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) setAnswer(IMP.lastItemId, +e.key);
+});
+
+/* ================= RESULTS ================= */
+function renderResult(m) {
+  const rec = ls.get('history', []).find(r => r.id === RESULT_ID);
+  if (!rec) { m.append(h('<div class="card">התוצאה לא נמצאה.</div>')); return; }
+  const secs = ['verbal', 'quant'].filter(s => rec.log.some(e => e.section === s));
+  const cards = h(`<div class="card"><div class="row" style="justify-content:space-between"><h2 style="margin:0">תוצאות הסימולציה</h2><span class="muted small">${fmtDate(rec.date)}</span></div><div class="sec-cards" style="margin-top:14px"></div></div>`);
+  secs.forEach(s => {
+    const e = rec.log.filter(x => x.section === s); const ok = e.filter(x => x.ok).length; const pct = Math.round(100 * ok / e.length);
+    const to = e.filter(x => x.timedOut).length;
+    cards.querySelector('.sec-cards').append(h(`<div class="sc"><div class="muted">${SECTION[s]}</div><div class="big">${ok}/${e.length}</div><div class="bar"><i style="width:${pct}%"></i></div>
+      <div class="small muted" style="margin-top:8px">${pct}% נכונות${to ? ` · ${to} נגמר הזמן` : ''}<br>רמת קושי שאליה הגעת: <b>${Math.round(rec.theta[s] * 100)}</b>/100</div></div>`));
+  });
+  m.append(cards);
+  const types = [...new Set(rec.log.map(e => e.type))];
+  const tt = h(`<div class="card"><h3>לפי סוג שאלה</h3><table><thead><tr><th>סוג</th><th>נכונות</th><th>זמן ממוצע</th><th>זמן מוקצב</th></tr></thead><tbody></tbody></table></div>`);
+  types.forEach(t => {
+    const e = rec.log.filter(x => x.type === t); const ok = e.filter(x => x.ok).length;
+    const avg = e.reduce((a, x) => a + x.time, 0) / e.length;
+    tt.querySelector('tbody').append(h(`<tr><td>${TYPES[t].label}</td><td>${ok}/${e.length} (${Math.round(100 * ok / e.length)}%)</td><td>${fmt(avg)}</td><td>${fmt(e[0].limit)}</td></tr>`));
+  });
+  m.append(tt);
+  if (rec.essay && rec.essay.text.trim()) {
+    const w = rec.essay.text.trim().split(/\s+/).length;
+    const topic = rec.essay.topicId && store.items.get(rec.essay.topicId);
+    const ed = h(`<details class="card"><summary style="cursor:pointer;font-weight:700">החיבור שלך (${w} מילים)</summary><div style="margin-top:10px">${topic ? imgsHtml(topic) : ''}<div style="white-space:pre-wrap;line-height:1.9">${esc(rec.essay.text)}</div></div></details>`);
+    m.append(ed);
+  }
+  const rv = h(`<div class="card"><div class="row" style="justify-content:space-between"><h3 style="margin:0">סקירת שאלות</h3><label class="small"><input type="checkbox" id="onlyBad"> הצג רק טעויות</label></div><div id="rvList" style="margin-top:12px"></div></div>`);
+  m.append(rv);
+  const draw = () => {
+    const only = $('#onlyBad', rv).checked; const list = $('#rvList', rv); list.innerHTML = '';
+    let lastG = null; const n = { verbal: 0, quant: 0 };
+    rec.log.forEach(e => {
+      n[e.section]++;
+      if (only && e.ok) return;
+      if (e.groupId && e.groupId !== lastG) {
+        const g = store.items.get(e.groupId);
+        if (g) list.append(h(`<details class="ctxd"><summary>${TYPES[g.type].label} — לחצו להצגה${rec.groupRead && rec.groupRead[g.id] != null ? ` · זמן עיון: ${fmt(rec.groupRead[g.id])}` : ''}</summary><div style="margin-top:8px">${imgsHtml(g)}</div></details>`));
+      }
+      lastG = e.groupId;
+      const it = store.items.get(e.id);
+      const status = e.ok ? '<span class="pill ok">נכון</span>' : e.chosen ? '<span class="pill bad">שגוי</span>' : `<span class="pill bad">${e.timedOut ? 'נגמר הזמן' : 'לא נענתה'}</span>`;
+      list.append(h(`<div class="rv ${e.ok ? 'ok' : 'bad'}"><div class="rv-head"><b>${SECTION[e.section]} · שאלה ${n[e.section]}</b><span class="muted">${TYPES[e.type].label}</span>${status}<span class="pill gray">${fmt(e.time)} מתוך ${fmt(e.limit)}</span></div>
+        ${it ? imgsHtml(it) : '<p class="muted small">השאלה נמחקה מהמאגר.</p>'}
+        <div class="ansrow">${[1, 2, 3, 4].map(k => `<span class="${k === e.correct ? 'correct' : k === e.chosen ? 'wrong' : ''}">${k}</span>`).join('')}<span style="border:0;width:auto" class="small muted">&nbsp;ירוק = התשובה הנכונה${!e.ok && e.chosen ? ', אדום = מה שענית' : ''}</span></div></div>`));
+    });
+    if (!list.children.length) list.append(h('<p class="muted">אין טעויות 🎉</p>'));
+  };
+  $('#onlyBad', rv).onchange = draw; draw();
+  m.append(h(`<div class="center"><button class="btn primary big" id="again">סימולציה נוספת</button></div>`));
+  $('#again').onclick = startExam;
+}
+
+/* ================= boot ================= */
+(async () => {
+  if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  await dbInit();
+  go('home');
+})();
+</script>
+</body>
+</html>
