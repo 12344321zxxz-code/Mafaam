@@ -316,7 +316,8 @@ function renderHome(m) {
     <div>
       <h2>תרגול בפורמט מפע"ם</h2>
       <p class="muted" style="margin:0 0 14px">שאלה אחת בכל פעם, זמן נפרד לכל שאלה, אי אפשר לדלג או לחזור, והמבחן מתאים את רמת הקושי לתשובות שלך. לפני כל קטע קריאה וכל תרשים יש ${S.times.passage} / ${S.times.chart} דקות לעיון בלבד, ורק אז מופיעות השאלות.</p>
-      <button class="btn primary big" id="startBtn" ${can ? '' : 'disabled'}>התחל סימולציה</button>
+      <div class="row"><button class="btn primary big" id="startBtn" ${can ? '' : 'disabled'}>התחל סימולציה</button>
+        ${testsWithQs().length ? `<select id="examTest" style="padding:12px 10px;font-size:15px"><option value="">מכל המבחנים (מעורב)</option>${testsWithQs().map(t => `<option value="${t.id}" ${t.id === EXAM_TEST ? 'selected' : ''}>רק ${esc(t.name)}</option>`).join('')}</select>` : ''}</div>
       ${can ? '' : '<p class="small muted">כדי להתחיל, צריך קודם לייבא לפחות מבחן אחד ולסמן בו שאלות.</p>'}
     </div>
     <div>
@@ -341,15 +342,16 @@ function renderHome(m) {
     </div></div>`));
   const hist = ls.get('history', []).slice(0, 5);
   if (hist.length) {
-    const card = h(`<div class="card"><h2>סימולציות אחרונות</h2><table><thead><tr><th>תאריך</th><th>מילולי</th><th>כמותי</th><th></th></tr></thead><tbody></tbody></table></div>`);
+    const card = h(`<div class="card"><h2>סימולציות אחרונות</h2><table><thead><tr><th>תאריך</th><th>מבחן</th><th>מילולי</th><th>כמותי</th><th></th></tr></thead><tbody></tbody></table></div>`);
     hist.forEach(r => card.querySelector('tbody').append(histRow(r)));
     m.append(card);
   }
   const sb = $('#startBtn'); if (sb) sb.onclick = startExam;
+  const et = $('#examTest'); if (et) et.onchange = () => { EXAM_TEST = et.value || null; ls.set('examTest', EXAM_TEST); };
 }
 function histRow(r) {
   const sc = sec => { const e = r.log.filter(x => x.section === sec); if (!e.length) return '—'; const ok = e.filter(x => x.ok).length; return `${ok}/${e.length} (${Math.round(100 * ok / e.length)}%)`; };
-  const tr = h(`<tr class="hist-row"><td>${fmtDate(r.date)}</td><td>${sc('verbal')}</td><td>${sc('quant')}</td><td><span class="btn sm">צפה</span></td></tr>`);
+  const tr = h(`<tr class="hist-row"><td>${fmtDate(r.date)}</td><td>${esc(r.testName || 'מעורב')}</td><td>${sc('verbal')}</td><td>${sc('quant')}</td><td><span class="btn sm">צפה</span></td></tr>`);
   tr.onclick = () => { RESULT_ID = r.id; go('result'); };
   return tr;
 }
@@ -1021,7 +1023,7 @@ function renderPrefs(m) {
 /* ================= HISTORY ================= */
 function renderPast(m) {
   const hist = ls.get('history', []);
-  const card = h(`<div class="card"><h2>היסטוריית סימולציות</h2>${hist.length ? '<table><thead><tr><th>תאריך</th><th>מילולי</th><th>כמותי</th><th></th></tr></thead><tbody></tbody></table>' : '<p class="muted">עוד לא נעשו סימולציות.</p>'}</div>`);
+  const card = h(`<div class="card"><h2>היסטוריית סימולציות</h2>${hist.length ? '<table><thead><tr><th>תאריך</th><th>מבחן</th><th>מילולי</th><th>כמותי</th><th></th></tr></thead><tbody></tbody></table>' : '<p class="muted">עוד לא נעשו סימולציות.</p>'}</div>`);
   hist.forEach(r => card.querySelector('tbody').append(histRow(r)));
   m.append(card);
 }
@@ -1038,8 +1040,12 @@ function startTimer(sec, onEnd) {
   };
   TM = setInterval(tick, 200); tick();
 }
-function usableOf(type) { return allItems().filter(i => i.type === type && isUsable(i)); }
+// which test the simulation draws from (null = mix of all tests); remembered per device
+let EXAM_TEST = ls.get('examTest', null);
+function testsWithQs() { return [...store.tests.values()].sort((a, b) => a.created - b.created).filter(t => testItems(t.id).some(i => ['q', 'child'].includes(TYPES[i.type].kind) && i.answer >= 1)); }
+function usableOf(type) { return allItems().filter(i => i.type === type && isUsable(i) && (!EXAM_TEST || i.testId === EXAM_TEST)); }
 function startExam() {
+  if (EXAM_TEST && !testsWithQs().some(t => t.id === EXAM_TEST)) { EXAM_TEST = null; ls.set('examTest', null); }
   computeDifficulty();
   const has = t => usableOf(t).length > 0;
   const slots = [];
@@ -1172,7 +1178,8 @@ function showBreak(slot) {
 }
 function finishExam() {
   stopTimer();
-  const rec = { id: EX.id, date: EX.date, log: EX.log, essay: EX.essay, theta: EX.theta, groupRead: EX.groupRead };
+  const tst = EXAM_TEST && store.tests.get(EXAM_TEST);
+  const rec = { id: EX.id, date: EX.date, log: EX.log, essay: EX.essay, theta: EX.theta, groupRead: EX.groupRead, testName: tst ? tst.name : 'מעורב' };
   const hist = ls.get('history', []); hist.unshift(rec); ls.set('history', hist.slice(0, 60));
   const seen = new Set(ls.get('seen', [])); EX.used.forEach(id => seen.add(id)); ls.set('seen', [...seen]);
   EX = null; $('#exam').hidden = true; $('#exam').innerHTML = ''; document.body.classList.remove('in-exam');
@@ -1188,7 +1195,7 @@ function renderResult(m) {
   const rec = ls.get('history', []).find(r => r.id === RESULT_ID);
   if (!rec) { m.append(h('<div class="card">התוצאה לא נמצאה.</div>')); return; }
   const secs = ['verbal', 'quant'].filter(s => rec.log.some(e => e.section === s));
-  const cards = h(`<div class="card"><div class="row" style="justify-content:space-between"><h2 style="margin:0">תוצאות הסימולציה</h2><span class="muted small">${fmtDate(rec.date)}</span></div><div class="sec-cards" style="margin-top:14px"></div></div>`);
+  const cards = h(`<div class="card"><div class="row" style="justify-content:space-between"><h2 style="margin:0">תוצאות הסימולציה</h2><span class="muted small">${esc(rec.testName || "")}${rec.testName ? " · " : ""}${fmtDate(rec.date)}</span></div><div class="sec-cards" style="margin-top:14px"></div></div>`);
   secs.forEach(s => {
     const e = rec.log.filter(x => x.section === s); const ok = e.filter(x => x.ok).length; const pct = Math.round(100 * ok / e.length);
     const to = e.filter(x => x.timedOut).length;
