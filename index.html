@@ -502,8 +502,22 @@ function cropRectEl(c) {
   return el;
 }
 function loadImage(url) { return new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = url; }); }
-async function doCrop(pi, r, pageDiv) { await addCrop(await cropData(pi, r), pi, r, pageDiv); }
-async function cropData(pi, r) {
+async function doCrop(pi, r, pageDiv) { await addCrop(await cropData(pi, r, IMP.appendNext ? null : TYPES[IMP.type].kind), pi, r, pageDiv); }
+// parts of the page to blank out inside a crop, so the original test's numbering doesn't show:
+// a question's own "N." mark, and the "(שאלות a-b)" part of a passage/chart title
+function hideBoxes(pi, r, kind) {
+  const items = (IMP.pages[pi] || {}).items; if (!items || !items.length || !kind) return [];
+  const box = (i, hh = i.h) => ({ x: i.x - 0.004, y: i.y - hh - 0.003, w: i.w + 0.008, h: hh * 1.35 + 0.006 });
+  if (kind === 'q' || kind === 'child') { const m = findQnumMark(items, r); return m ? m.items.map(i => box(i, m.items[0].h)) : []; }
+  if (kind === 'group') {
+    const inside = items.filter(i => { const cx = i.x + i.w / 2, cy = i.y - i.h / 3; return cx >= r.x && cx <= r.x + r.w && cy >= r.y && cy <= r.y + r.h; });
+    const out = [];
+    groupLines(inside).forEach(L => { if (/שאלות\s*:?\s*\d/.test(lineText(L))) L.items.filter(i => /\d|שאלות|[()\-–]/.test(i.s)).forEach(i => out.push(box(i))); });
+    return out;
+  }
+  return [];
+}
+async function cropData(pi, r, kind) {
   const img = await loadImage(IMP.pages[pi].url);
   const W = img.naturalWidth, H = img.naturalHeight;
   const sx = r.x * W, sy = r.y * H, sw = r.w * W, sh = r.h * H;
@@ -512,6 +526,8 @@ async function cropData(pi, r) {
   const ctx = c.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
   ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(img, sx, sy, sw, sh, 0, 0, c.width, c.height);
+  ctx.fillStyle = '#fff';
+  hideBoxes(pi, r, kind).forEach(b => ctx.fillRect((b.x - r.x) * W * f, (b.y - r.y) * H * f, b.w * W * f, b.h * H * f));
   return trimCanvas(c).toDataURL('image/jpeg', 0.9);
 }
 
@@ -589,12 +605,12 @@ async function autoExtract(tid, progress) {
       made.push(mk({ chapter: 0, type: 'essay', page: pl.page, imgs: [await cropData(pl.page, pl.essayR)] }));
     if (pl.groupR) {
       const type = isQuant(pl.chapter) ? 'chart' : 'passage';
-      if (!havePage.has(type + ':' + pl.page)) { const g = mk({ chapter: pl.chapter, type, page: pl.page, imgs: [await cropData(pl.page, pl.groupR)] }); made.push(g); lastGroup[pl.chapter] = g; }
+      if (!havePage.has(type + ':' + pl.page)) { const g = mk({ chapter: pl.chapter, type, page: pl.page, imgs: [await cropData(pl.page, pl.groupR, 'group')] }); made.push(g); lastGroup[pl.chapter] = g; }
     }
     for (const q of pl.qs) {
       if (haveQ.has(pl.chapter + ':' + q.n)) continue;
       const fallback = isQuant(pl.chapter) ? 'problem' : 'comprehension';
-      const it = mk({ chapter: pl.chapter, qnum: q.n, page: pl.page, type: rangeType(tid, pl.chapter, q.n) || fallback, imgs: [await cropData(pl.page, q.r)] });
+      const it = mk({ chapter: pl.chapter, qnum: q.n, page: pl.page, type: rangeType(tid, pl.chapter, q.n) || fallback, imgs: [await cropData(pl.page, q.r, 'q')] });
       const T = TYPES[it.type];
       if (T.kind === 'child') { const g = lastGroup[pl.chapter]; if (g && g.type === T.parent) it.groupId = g.id; else it.type = fallback; }
       applyKey(it); haveQ.add(pl.chapter + ':' + q.n); made.push(it);
@@ -692,19 +708,20 @@ function parseAnswerKey(items) {
     return { label: hd.label, answers };
   }).filter(s => Object.keys(s.answers).length);
 }
-function detectQnum(items, r) {
+function detectQnum(items, r) { const m = findQnumMark(items, r); return m ? m.n : null; }
+// the question number is "N." with nothing printed right next to it on its right (RTL line start);
+// stray marks far away in the margin are ignored. Returns the number and its text items (digits + dot).
+function findQnumMark(items, r) {
   const inside = items.filter(i => { const cx = i.x + i.w / 2, cy = i.y - i.h / 3; return cx >= r.x && cx <= r.x + r.w && cy >= r.y && cy <= r.y + r.h; });
-  // the question number is "N." with nothing printed right next to it on its right (RTL line start);
-  // stray marks far away in the margin are ignored
   for (const L of groupLines(inside).sort((a, b) => a.y - b.y)) {
     const its = L.items;
     for (const n of its) {
       const m = n.s.match(/^\.?(\d{1,2})\.?$/); if (!m || +m[1] < 1 || +m[1] > 40) continue;
-      const hasDot = n.s.includes('.') || its.some(i => i.s === '.' && Math.abs((i.x + i.w) - n.x) < 0.012);
-      if (!hasDot) continue;
+      const dot = its.find(i => i.s === '.' && Math.abs((i.x + i.w) - n.x) < 0.012);
+      if (!n.s.includes('.') && !dot) continue;
       const right = n.x + n.w;
       const near = its.some(i => i !== n && i.s !== '.' && i.x + i.w > right - 0.002 && i.x - right < 0.025);
-      if (!near) return +m[1];
+      if (!near) return { n: +m[1], items: dot ? [n, dot] : [n] };
     }
   }
   return null;
